@@ -252,6 +252,36 @@ async function submitHybridAnalysis() {
     btnLabel.textContent = 'Running Hybrid Inference...';
     btnAbort.classList.remove('hidden');
 
+    const progressCard = document.getElementById('live-progress-card');
+    const stepBadge = document.getElementById('live-step-badge');
+    const progressMsg = document.getElementById('live-progress-message');
+    const progressPct = document.getElementById('live-progress-pct');
+    const progressFill = document.getElementById('live-progress-fill');
+
+    if (progressCard) {
+        progressCard.classList.remove('hidden');
+        stepBadge.textContent = 'Step 1/4';
+        progressMsg.textContent = selectedUnifiedFile ? `Extracting ${selectedUnifiedFile.name}...` : 'Preparing text input...';
+        progressPct.textContent = '10%';
+        progressFill.style.width = '10%';
+    }
+
+    const progressTimer = setInterval(async () => {
+        try {
+            const pollRes = await fetch(`/api/status/${reqId}`);
+            if (pollRes.ok) {
+                const pollData = await pollRes.json();
+                if (pollData && pollData.status === 'running') {
+                    if (stepBadge) stepBadge.textContent = `Step ${pollData.step || 1}/${pollData.total_steps || 4}`;
+                    if (progressMsg) progressMsg.textContent = pollData.message || 'Processing...';
+                    const pct = pollData.percent || 15;
+                    if (progressPct) progressPct.textContent = `${pct}%`;
+                    if (progressFill) progressFill.style.width = `${pct}%`;
+                }
+            }
+        } catch (_) {}
+    }, 250);
+
     try {
         let res;
         if (selectedUnifiedFile) {
@@ -308,6 +338,14 @@ async function submitHybridAnalysis() {
             showToast('Error: ' + e.message, 'error');
         }
     } finally {
+        clearInterval(progressTimer);
+        if (progressFill) progressFill.style.width = '100%';
+        if (progressPct) progressPct.textContent = '100%';
+        if (progressMsg) progressMsg.textContent = 'Inference finished';
+        setTimeout(() => {
+            if (progressCard) progressCard.classList.add('hidden');
+        }, 500);
+
         btn.disabled = false;
         btnLabel.textContent = 'Run Hybrid Analysis';
         btnAbort.classList.add('hidden');
@@ -354,6 +392,23 @@ function renderUnifiedResults(data) {
 
     modelBadge.textContent = `Model: ${data.model_used || 'RuBERT-AI'}`;
     deviceBadge.textContent = `Device: ${(data.device || 'Auto').toUpperCase()}`;
+
+    // Confidence & Risk Level Status
+    const confBadge = document.getElementById('confidence-status-badge');
+    const confLabel = document.getElementById('confidence-status-label');
+    const confDesc = document.getElementById('confidence-status-desc');
+
+    const conf = data.confidence_status || (summary && summary.confidence_status) || {
+        grade: isAI ? 'Grade F (Confirmed AI)' : 'Grade A (Verified Human)',
+        badge_class: isAI ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+        description: isAI ? 'High probability synthetic phrasing detected.' : 'High confidence human authorship.'
+    };
+
+    if (confBadge && confLabel && confDesc) {
+        confBadge.className = `inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-bold shadow-sm ${conf.badge_class || ''}`;
+        confLabel.textContent = conf.grade || conf.label;
+        confDesc.textContent = conf.description || '';
+    }
 
     // 2. Dual Meters: Monolithic vs Paragraph-Weighted
     const monolithicVal = (data.monolithic_scale !== undefined) ? data.monolithic_scale : (data.human_ai_scale || 50.0);

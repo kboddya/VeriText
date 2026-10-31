@@ -186,6 +186,7 @@ class ModernAIDetector:
         mode: str = "auto",
         batch_size: int = 16,
         is_cancelled: Optional[Callable[[], bool]] = None,
+        on_progress: Optional[Callable[[int, int], None]] = None,
     ) -> list[dict]:
         """Batch score texts with automatic preprocessing and tokenization."""
         if is_cancelled and is_cancelled():
@@ -264,5 +265,8 @@ class ModernAIDetector:
                     "ai_probability": float(ai_prob),
                     "model_used": model_info["name"],
                 })
+
+            if on_progress:
+                on_progress(min(len(normalized_texts), i + len(batch)), len(normalized_texts))
 
         return results

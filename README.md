@@ -12,6 +12,9 @@ Available as both a **FastAPI-powered Web Application** (with paragraph-level he
 
 ## 🚀 Key Features
 
+* **Dual Status System (Real-Time Progress & Confidence Grading):**
+  * **Live Execution Progress Status:** Real-time feedback bar with step-by-step progress tracking (`/api/status/{id}`) showing input normalization, macro attention, and paragraph-by-paragraph completion percentage.
+  * **Semantic Confidence & Risk Level Status:** Categorizes results into transparent confidence tiers (Grade A: *Verified Human*, Grade B: *Likely Human*, Grade C: *Uncertain / Borderline*, Grade D: *Likely AI*, Grade F: *Confirmed AI*) with explanations for borderline cases (e.g. historical charters like the US Constitution).
 * **Dual Hybrid Scoring Architecture:**
   * **Macro Context Score:** Evaluates full-text continuous multi-window attention (480-token windows with a 240-token stride) to capture overarching narrative consistency.
   * **Micro Paragraph-Weighted Score:** Segments documents into paragraphs and calculates word-count-weighted probabilities to detect localized synthetic inserts (*cyborg text*).

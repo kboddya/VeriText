@@ -156,6 +156,24 @@
                     </div>
                 </div>
 
+                <!-- Live Execution Progress Status Card -->
+                <div id="live-progress-card" class="hidden bg-slate-950 p-4 rounded-xl border border-blue-500/40 space-y-2.5 shadow-xl">
+                    <div class="flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2.5">
+                            <span class="relative flex h-2.5 w-2.5">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
+                            </span>
+                            <span id="live-step-badge" class="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono font-bold text-[11px]">Step 1/4</span>
+                            <span id="live-progress-message" class="text-slate-200 font-medium">Initializing inference session...</span>
+                        </div>
+                        <span id="live-progress-pct" class="font-mono font-bold text-blue-400 text-sm">10%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                        <div id="live-progress-fill" class="bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-400 h-2 rounded-full transition-all duration-300 ease-out" style="width: 10%;"></div>
+                    </div>
+                </div>
+
                 <!-- Bottom Controls: Model Selector + CTA -->
                 <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-4 border-t border-slate-800">
                     <div class="sm:w-80">
@@ -201,15 +219,21 @@
             <!-- ======================================================== -->
             <div id="unified-results-card" class="hidden space-y-6">
 
-                <!-- 1. Top Verdict Banner -->
+                <!-- 1. Top Verdict Banner & Confidence Status -->
                 <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800">
                         <div>
-                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold block">Authentication Verdict</span>
-                            <div id="main-verdict-container" class="mt-2 inline-flex items-center gap-2.5 px-6 py-2 rounded-full border text-base font-bold shadow-sm">
-                                <span id="main-verdict-icon"></span>
-                                <span id="main-verdict-text">Human-Written (Human)</span>
+                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold block">Authentication Verdict & Confidence Status</span>
+                            <div class="flex flex-wrap items-center gap-3 mt-2">
+                                <div id="main-verdict-container" class="inline-flex items-center gap-2.5 px-6 py-2 rounded-full border text-base font-bold shadow-sm">
+                                    <span id="main-verdict-icon"></span>
+                                    <span id="main-verdict-text">Human-Written (Human)</span>
+                                </div>
+                                <div id="confidence-status-badge" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-bold shadow-sm">
+                                    <span id="confidence-status-label">Grade A (Verified Human)</span>
+                                </div>
                             </div>
+                            <p id="confidence-status-desc" class="text-xs text-slate-400 mt-2 max-w-xl">High confidence human authorship with natural lexical variety and burstiness.</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
                             <span id="active-model-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300">Model: RuBERT-AI</span>

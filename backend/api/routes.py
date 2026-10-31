@@ -12,6 +12,7 @@ from ..config import DEVICE, MODELS_CATALOG
 from ..engine import ModernAIDetector
 from ..markers import detect_stylistic_markers
 from ..parsers import extract_text_from_file
+from ..preprocessing import get_confidence_status
 from .schemas import AbortRequest, AbortResponse, ScoreRequest
 
 router = APIRouter(prefix="/api", tags=["detector"])
@@ -72,6 +73,11 @@ async def abort_by_body_endpoint(payload: AbortRequest) -> dict:
     }
 
 
+@router.get("/status/{request_id}")
+async def get_task_status_endpoint(request_id: str) -> dict:
+    return cancellation_manager.get_progress(request_id)
+
+
 @router.post("/score")
 async def score_text_endpoint(
     req: ScoreRequest,
@@ -85,8 +91,24 @@ async def score_text_endpoint(
             if not full_text:
                 raise HTTPException(status_code=400, detail="Text cannot be empty.")
 
+            cancellation_manager.update_progress(
+                active_id,
+                "Normalizing text and analyzing language...",
+                percent=15,
+                step=1,
+                total_steps=4,
+            )
+
             text_lang = engine.detect_language(full_text)
             effective_mode = text_lang if req.mode == "auto" else req.mode
+
+            cancellation_manager.update_progress(
+                active_id,
+                f"Evaluating continuous macro attention ({effective_mode.upper()})...",
+                percent=35,
+                step=2,
+                total_steps=4,
+            )
 
             # 1. Monolithic whole-text analysis (continuous context)
             res = await asyncio.to_thread(
@@ -109,12 +131,31 @@ async def score_text_endpoint(
             scored_paragraphs = []
 
             if len(paras_to_score) > 1:
+                cancellation_manager.update_progress(
+                    active_id,
+                    f"Scoring paragraphs (0/{len(paras_to_score)})...",
+                    percent=55,
+                    step=3,
+                    total_steps=4,
+                )
+
+                def on_text_para_progress(cur: int, tot: int) -> None:
+                    pct = 55 + int((cur / max(1, tot)) * 35)
+                    cancellation_manager.update_progress(
+                        active_id,
+                        f"Scoring paragraphs: {cur}/{tot} ({int(cur/tot*100)}%)...",
+                        percent=pct,
+                        step=3,
+                        total_steps=4,
+                    )
+
                 batch_results = await asyncio.to_thread(
                     engine.score_batch,
                     paras_to_score,
                     mode=effective_mode,
                     batch_size=16,
                     is_cancelled=cancel_event.is_set,
+                    on_progress=on_text_para_progress,
                 )
                 ai_para_count = sum(1 for r in batch_results if r["label"] == "ai")
                 human_para_count = len(batch_results) - ai_para_count
@@ -157,10 +198,19 @@ async def score_text_endpoint(
             if cancel_event.is_set():
                 raise OperationCancelled("Analysis aborted by user.")
 
+            cancellation_manager.update_progress(
+                active_id,
+                "Finalizing metrics & confidence status...",
+                percent=95,
+                step=4,
+                total_steps=4,
+            )
+
             words = len(full_text.split())
             chars = len(full_text)
             markers = detect_stylistic_markers(full_text)
             monolithic_scale = res["human_ai_scale"]
+            confidence_status = get_confidence_status(monolithic_scale)
 
             return {
                 "label": res["label"],
@@ -169,6 +219,7 @@ async def score_text_endpoint(
                 "monolithic_scale": monolithic_scale,
                 "paragraph_scale": paragraph_scale,
                 "overall_scale": monolithic_scale,
+                "confidence_status": confidence_status,
                 "mode": req.mode,
                 "model_used": res["model_used"],
                 "device": DEVICE,
@@ -180,6 +231,7 @@ async def score_text_endpoint(
                     "overall_scale": monolithic_scale,
                     "monolithic_scale": monolithic_scale,
                     "paragraph_scale": paragraph_scale,
+                    "confidence_status": confidence_status,
                     "word_count": words,
                     "char_count": chars,
                     "total_paragraphs": len(raw_paras),
@@ -209,6 +261,14 @@ async def score_document_endpoint(
     req_id = request_id or x_request_id
     async with track_cancellation(request, req_id) as (active_id, cancel_event):
         try:
+            cancellation_manager.update_progress(
+                active_id,
+                f"Reading and extracting text from {file.filename}...",
+                percent=10,
+                step=1,
+                total_steps=4,
+            )
+
             content = await file.read()
             if cancel_event.is_set():
                 raise OperationCancelled("Analysis aborted by user.")
@@ -224,6 +284,14 @@ async def score_document_endpoint(
             doc_lang = engine.detect_language(full_text)
             effective_mode = doc_lang if mode == "auto" else mode
 
+            cancellation_manager.update_progress(
+                active_id,
+                f"Evaluating whole-document continuous context ({effective_mode.upper()})...",
+                percent=35,
+                step=2,
+                total_steps=4,
+            )
+
             # 1. Monolithic whole-document analysis (continuous context)
             overall_res = await asyncio.to_thread(
                 engine.score_single,
@@ -237,12 +305,31 @@ async def score_document_endpoint(
             paras_to_score = paragraphs[:150]
 
             if paras_to_score:
+                cancellation_manager.update_progress(
+                    active_id,
+                    f"Scoring paragraphs (0/{len(paras_to_score)})...",
+                    percent=55,
+                    step=3,
+                    total_steps=4,
+                )
+
+                def on_doc_para_progress(cur: int, tot: int) -> None:
+                    pct = 55 + int((cur / max(1, tot)) * 35)
+                    cancellation_manager.update_progress(
+                        active_id,
+                        f"Scoring paragraphs: {cur}/{tot} ({int(cur/tot*100)}%)...",
+                        percent=pct,
+                        step=3,
+                        total_steps=4,
+                    )
+
                 batch_results = await asyncio.to_thread(
                     engine.score_batch,
                     paras_to_score,
                     mode=effective_mode,
                     batch_size=16,
                     is_cancelled=cancel_event.is_set,
+                    on_progress=on_doc_para_progress,
                 )
                 ai_para_count = sum(1 for r in batch_results if r["label"] == "ai")
                 human_para_count = len(batch_results) - ai_para_count
@@ -286,10 +373,19 @@ async def score_document_endpoint(
             if cancel_event.is_set():
                 raise OperationCancelled("Analysis aborted by user.")
 
+            cancellation_manager.update_progress(
+                active_id,
+                "Finalizing metrics & confidence status...",
+                percent=95,
+                step=4,
+                total_steps=4,
+            )
+
             words = len(full_text.split())
             chars = len(full_text)
             markers = detect_stylistic_markers(full_text)
             monolithic_scale = overall_res["human_ai_scale"]
+            confidence_status = get_confidence_status(monolithic_scale)
 
             return {
                 "filename": file.filename,
@@ -299,6 +395,7 @@ async def score_document_endpoint(
                 "monolithic_scale": monolithic_scale,
                 "paragraph_scale": paragraph_scale,
                 "overall_scale": monolithic_scale,
+                "confidence_status": confidence_status,
                 "mode": mode,
                 "model_used": overall_res["model_used"],
                 "device": DEVICE,
@@ -308,6 +405,7 @@ async def score_document_endpoint(
                     "overall_scale": monolithic_scale,
                     "monolithic_scale": monolithic_scale,
                     "paragraph_scale": paragraph_scale,
+                    "confidence_status": confidence_status,
                     "word_count": words,
                     "char_count": chars,
                     "total_paragraphs": len(paragraphs),

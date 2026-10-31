@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from backend.preprocessing import (
     detect_dominant_language,
+    get_confidence_status,
     normalize_text_for_detector,
 )
 from backend.markers import detect_stylistic_markers
@@ -53,6 +54,13 @@ class TestCoreDetector(unittest.TestCase):
     def test_extract_unsupported_extension(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported file format"):
             extract_text_from_file("archive.zip", b"123")
+
+    def test_get_confidence_status(self) -> None:
+        self.assertEqual(get_confidence_status(10.0)["code"], "verified_human")
+        self.assertEqual(get_confidence_status(35.0)["code"], "likely_human")
+        self.assertEqual(get_confidence_status(48.0)["code"], "uncertain_borderline")
+        self.assertEqual(get_confidence_status(75.0)["code"], "likely_ai")
+        self.assertEqual(get_confidence_status(95.0)["code"], "high_confidence_ai")
 
 
 if __name__ == "__main__":

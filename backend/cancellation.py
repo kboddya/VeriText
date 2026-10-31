@@ -15,34 +15,76 @@ class OperationCancelled(Exception):
 
 
 class CancellationManager:
-    """Thread-safe registry for managing active request cancellation events."""
+    """Thread-safe registry for managing active request cancellation events and live execution progress."""
 
     def __init__(self) -> None:
         self._tokens: dict[str, threading.Event] = {}
+        self._progress: dict[str, dict] = {}
         self._lock = threading.Lock()
 
     def register(self, request_id: str) -> threading.Event:
         with self._lock:
             event = threading.Event()
             self._tokens[request_id] = event
+            self._progress[request_id] = {
+                "request_id": request_id,
+                "status": "running",
+                "step": 1,
+                "total_steps": 4,
+                "percent": 5,
+                "message": "Initializing inference session...",
+            }
             return event
+
+    def update_progress(
+        self,
+        request_id: str,
+        message: str,
+        percent: int,
+        step: Optional[int] = None,
+        total_steps: Optional[int] = None,
+    ) -> None:
+        with self._lock:
+            if request_id in self._progress:
+                p = self._progress[request_id]
+                p["message"] = message
+                p["percent"] = max(0, min(100, int(percent)))
+                if step is not None:
+                    p["step"] = step
+                if total_steps is not None:
+                    p["total_steps"] = total_steps
+
+    def get_progress(self, request_id: str) -> dict:
+        with self._lock:
+            if request_id in self._progress:
+                return dict(self._progress[request_id])
+            return {
+                "request_id": request_id,
+                "status": "completed",
+                "step": 4,
+                "total_steps": 4,
+                "percent": 100,
+                "message": "Analysis completed",
+            }
 
     def cancel(self, request_id: str) -> bool:
         with self._lock:
             event = self._tokens.get(request_id)
             if event:
                 event.set()
+                if request_id in self._progress:
+                    self._progress[request_id]["status"] = "cancelled"
+                    self._progress[request_id]["message"] = "Analysis cancelled by user"
                 return True
             return False
 
     def unregister(self, request_id: str) -> None:
         with self._lock:
             self._tokens.pop(request_id, None)
-
-    def is_cancelled(self, request_id: str) -> bool:
-        with self._lock:
-            event = self._tokens.get(request_id)
-            return event.is_set() if event else False
+            if request_id in self._progress:
+                self._progress[request_id]["status"] = "completed"
+                self._progress[request_id]["percent"] = 100
+                self._progress[request_id]["message"] = "Analysis completed"
 
     def active_count(self) -> int:
         with self._lock:

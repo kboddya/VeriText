@@ -77,3 +77,62 @@ def detect_dominant_language(text: str) -> str:
     if cyrillic_chars >= latin_chars or (cyrillic_chars / total_alpha >= 0.30):
         return "ru"
     return "en"
+
+
+def get_confidence_status(ai_percentage: float) -> dict:
+    """
+    Categorize AI generation probability into confidence grades and risk levels.
+    Provides clear semantic status instead of a blunt binary verdict.
+    """
+    pct = max(0.0, min(100.0, float(ai_percentage)))
+    if pct < 20.0:
+        return {
+            "code": "verified_human",
+            "label": "Verified Human",
+            "grade": "Grade A (Human)",
+            "description": "High-confidence human authorship with natural lexical variety and burstiness.",
+            "color": "emerald",
+            "risk_level": "Minimal",
+            "badge_class": "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+        }
+    elif pct < 45.0:
+        return {
+            "code": "likely_human",
+            "label": "Likely Human / Formal Style",
+            "grade": "Grade B (Likely Human)",
+            "description": "Predominantly human characteristics with structured or formal terminology.",
+            "color": "teal",
+            "risk_level": "Low",
+            "badge_class": "bg-teal-500/10 text-teal-300 border-teal-500/30",
+        }
+    elif pct <= 60.0:
+        return {
+            "code": "uncertain_borderline",
+            "label": "Uncertain / Borderline Content",
+            "grade": "Grade C (Borderline)",
+            "description": "Score near 50% threshold. Typical for legal/historical charters, formulaic encyclopedic prose, or mixed hybrid human-AI text.",
+            "color": "amber",
+            "risk_level": "Moderate / Indeterminate",
+            "badge_class": "bg-amber-500/10 text-amber-300 border-amber-500/30",
+        }
+    elif pct <= 85.0:
+        return {
+            "code": "likely_ai",
+            "label": "Likely AI-Generated",
+            "grade": "Grade D (Likely AI)",
+            "description": "Substantial synthetic phrasing, uniform rhythm, and low perplexity typical of LLMs.",
+            "color": "orange",
+            "risk_level": "High",
+            "badge_class": "bg-orange-500/10 text-orange-400 border-orange-500/30",
+        }
+    else:
+        return {
+            "code": "high_confidence_ai",
+            "label": "High-Confidence AI Generation",
+            "grade": "Grade F (Confirmed AI)",
+            "description": "Unmistakable synthetic signatures (ChatGPT, Claude, DeepSeek, or Llama).",
+            "color": "rose",
+            "risk_level": "Critical",
+            "badge_class": "bg-rose-500/10 text-rose-400 border-rose-500/30",
+        }
+
