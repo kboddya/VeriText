@@ -229,10 +229,11 @@ function setupDropzone(dropzoneId, onFileDrop) {
 }
 
 function handleUnifiedFileSelected(event) {
-    const file = event.target.files[0];
+    const file = event.target.files && event.target.files[0];
     if (file) {
         handleSelectedUnifiedFile(file);
     }
+    event.target.value = '';
 }
 
 function handleSelectedUnifiedFile(file) {
@@ -419,32 +420,91 @@ function abortUnifiedAnalysis() {
     activeRequests.unified = { controller: null, id: null };
 }
 
+function getFallbackConfidence(pctVal) {
+    const pct = parseFloat(pctVal) || 50.0;
+    if (pct < 20.0) {
+        return {
+            code: 'verified_human',
+            grade: 'Grade A (Verified Human)',
+            label: 'Verified Human',
+            badge_class: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+            description: 'High confidence human authorship with natural lexical variety and burstiness.',
+        };
+    } else if (pct < 45.0) {
+        return {
+            code: 'likely_human',
+            grade: 'Grade B (Likely Human)',
+            label: 'Likely Human / Formal Style',
+            badge_class: 'bg-teal-500/10 text-teal-300 border-teal-500/30',
+            description: 'Predominantly human characteristics with structured or formal terminology.',
+        };
+    } else if (pct <= 60.0) {
+        return {
+            code: 'uncertain_borderline',
+            grade: 'Grade C (Borderline Content)',
+            label: 'Uncertain / Borderline Content',
+            badge_class: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+            description: 'Score near 50% threshold. Typical for legal/historical charters, formulaic encyclopedic prose, or mixed hybrid edits.',
+        };
+    } else if (pct <= 85.0) {
+        return {
+            code: 'likely_ai',
+            grade: 'Grade D (Likely AI)',
+            label: 'Likely AI-Generated',
+            badge_class: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+            description: 'Substantial synthetic phrasing, uniform rhythm, and low perplexity typical of LLMs.',
+        };
+    } else {
+        return {
+            code: 'high_confidence_ai',
+            grade: 'Grade F (Confirmed AI)',
+            label: 'High-Confidence AI Generation',
+            badge_class: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+            description: 'Unmistakable synthetic signatures (ChatGPT, Claude, DeepSeek, or Llama).',
+        };
+    }
+}
+
 // ----------------------------------------------------
 // RENDERING RESULTS DASHBOARD
 // ----------------------------------------------------
 function renderUnifiedResults(data) {
     const summary = data.summary || {};
-    const isAI = (data.label === 'ai') || (summary.overall_label === 'ai');
+    const monolithicVal = (data.monolithic_scale !== undefined) ? data.monolithic_scale : (data.human_ai_scale || 50.0);
+    const paragraphVal = (data.paragraph_scale !== undefined) ? data.paragraph_scale : (summary.overall_scale || monolithicVal);
 
-    // 1. Top Verdict Banner
-    const verdictContainer = document.getElementById('main-verdict-container');
-    const verdictIcon = document.getElementById('main-verdict-icon');
-    const verdictText = document.getElementById('main-verdict-text');
-    const modelBadge = document.getElementById('active-model-badge');
-    const deviceBadge = document.getElementById('active-device-badge');
+    // 1. Verdict Confidence Status (Sole Primary Verdict - No Binary AI/Human)
+    const conf = data.confidence_status || (summary && summary.confidence_status) || getFallbackConfidence(monolithicVal);
 
-    if (isAI) {
-        verdictContainer.className = "mt-2 inline-flex items-center gap-2.5 px-6 py-2 rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-400 text-base font-bold shadow-lg shadow-rose-500/10";
-        verdictIcon.innerHTML = `<svg class="w-5 h-5 text-rose-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>`;
-        verdictText.textContent = "AI-Generated Content (AI)";
+    let iconSvg = '';
+    if (conf.code === 'verified_human') {
+        iconSvg = `<svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>`;
+    } else if (conf.code === 'likely_human') {
+        iconSvg = `<svg class="w-5 h-5 text-teal-300" fill="currentColor" viewBox="0 0 20 20"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>`;
+    } else if (conf.code === 'uncertain_borderline') {
+        iconSvg = `<svg class="w-5 h-5 text-amber-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>`;
+    } else if (conf.code === 'likely_ai') {
+        iconSvg = `<svg class="w-5 h-5 text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>`;
     } else {
-        verdictContainer.className = "mt-2 inline-flex items-center gap-2.5 px-6 py-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 text-base font-bold shadow-lg shadow-emerald-500/10";
-        verdictIcon.innerHTML = `<svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>`;
-        verdictText.textContent = "Human-Written Content (Human)";
+        iconSvg = `<svg class="w-5 h-5 text-rose-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>`;
     }
 
-    modelBadge.textContent = `Model: ${data.model_used || 'RuBERT-AI'}`;
-    deviceBadge.textContent = `Device: ${(data.device || 'Auto').toUpperCase()}`;
+    const statusContainer = document.getElementById('confidence-status-container');
+    const statusIcon = document.getElementById('confidence-status-icon');
+    const statusText = document.getElementById('confidence-status-text');
+    const statusDesc = document.getElementById('confidence-status-desc');
+
+    if (statusContainer) {
+        statusContainer.className = `inline-flex items-center gap-2.5 px-6 py-2.5 rounded-xl border text-base font-bold shadow-lg transition-all ${conf.badge_class || 'border-blue-500/40 bg-blue-500/10 text-blue-300'}`;
+    }
+    if (statusIcon) statusIcon.innerHTML = iconSvg;
+    if (statusText) statusText.textContent = conf.grade || conf.label;
+    if (statusDesc) statusDesc.textContent = conf.description || '';
+
+    const modelBadge = document.getElementById('active-model-badge');
+    const deviceBadge = document.getElementById('active-device-badge');
+    if (modelBadge) modelBadge.textContent = `Model: ${data.model_used || 'RuBERT-AI'}`;
+    if (deviceBadge) deviceBadge.textContent = `Device: ${(data.device || 'Auto').toUpperCase()}`;
 
     const sourceBadge = document.getElementById('active-source-badge');
     if (sourceBadge) {
@@ -457,27 +517,7 @@ function renderUnifiedResults(data) {
         }
     }
 
-    // Confidence & Risk Level Status
-    const confBadge = document.getElementById('confidence-status-badge');
-    const confLabel = document.getElementById('confidence-status-label');
-    const confDesc = document.getElementById('confidence-status-desc');
-
-    const conf = data.confidence_status || (summary && summary.confidence_status) || {
-        grade: isAI ? 'Grade F (Confirmed AI)' : 'Grade A (Verified Human)',
-        badge_class: isAI ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-        description: isAI ? 'High probability synthetic phrasing detected.' : 'High confidence human authorship.'
-    };
-
-    if (confBadge && confLabel && confDesc) {
-        confBadge.className = `inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-bold shadow-sm ${conf.badge_class || ''}`;
-        confLabel.textContent = conf.grade || conf.label;
-        confDesc.textContent = conf.description || '';
-    }
-
     // 2. Dual Meters: Monolithic vs Paragraph-Weighted
-    const monolithicVal = (data.monolithic_scale !== undefined) ? data.monolithic_scale : (data.human_ai_scale || 50.0);
-    const paragraphVal = (data.paragraph_scale !== undefined) ? data.paragraph_scale : (summary.overall_scale || monolithicVal);
-
     const monoClamped = Math.max(0, Math.min(100, monolithicVal));
     const paraClamped = Math.max(0, Math.min(100, paragraphVal));
 
@@ -491,9 +531,10 @@ function renderUnifiedResults(data) {
     const words = summary.word_count || (data.full_text ? data.full_text.split(/\s+/).length : 0);
     const chars = summary.char_count || (data.full_text ? data.full_text.length : 0);
     const totalParas = summary.total_paragraphs || (data.paragraphs ? data.paragraphs.length : 1);
-    const aiParas = summary.ai_paragraphs || (isAI ? 1 : 0);
-    const humanParas = summary.human_paragraphs || (isAI ? 0 : 1);
-    const aiPct = summary.ai_paragraph_pct !== undefined ? summary.ai_paragraph_pct : (isAI ? 100 : 0);
+    const isSuspicious = (monolithicVal >= 50.0);
+    const aiParas = (summary.ai_paragraphs !== undefined) ? summary.ai_paragraphs : (isSuspicious ? 1 : 0);
+    const humanParas = (summary.human_paragraphs !== undefined) ? summary.human_paragraphs : (isSuspicious ? 0 : 1);
+    const aiPct = (summary.ai_paragraph_pct !== undefined) ? summary.ai_paragraph_pct : (isSuspicious ? 100 : 0);
 
     document.getElementById('stat-words-chars').textContent = `${words.toLocaleString()} / ${chars.toLocaleString()}`;
     document.getElementById('stat-total-paras').textContent = totalParas;
@@ -591,11 +632,11 @@ function renderParagraphsList() {
     }
 
     list.forEach(p => {
-        const isAI = p.label === 'ai';
-        const card = document.createElement('div');
-        const borderClass = isAI ? 'border-rose-500/30 bg-rose-950/10' : 'border-emerald-500/30 bg-emerald-950/10';
-        const badgeClass = isAI ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
         const scaleVal = (p.human_ai_scale !== undefined) ? p.human_ai_scale.toFixed(1) : '50.0';
+        const paraConf = getFallbackConfidence(p.human_ai_scale);
+        const card = document.createElement('div');
+        const isSuspicious = (p.human_ai_scale || 0) >= 50.0;
+        const borderClass = isSuspicious ? 'border-rose-500/30 bg-rose-950/10' : 'border-emerald-500/30 bg-emerald-950/10';
         const wordCount = p.word_count || (p.text ? p.text.split(/\s+/).length : 0);
 
         card.className = `p-4 rounded-xl border ${borderClass} space-y-2.5 transition`;
@@ -603,20 +644,20 @@ function renderParagraphsList() {
             <div class="flex items-center justify-between text-xs">
                 <div class="flex items-center gap-2">
                     <span class="font-mono text-slate-400 font-semibold">#${p.index}</span>
-                    <span class="px-2 py-0.5 rounded text-[11px] font-bold border ${badgeClass}">
-                        ${isAI ? 'AI-Generated' : 'Human-Written'}
+                    <span class="px-2.5 py-0.5 rounded text-[11px] font-bold border ${paraConf.badge_class}">
+                        ${paraConf.grade}
                     </span>
                     <span class="text-[11px] text-slate-500 font-mono">${wordCount} words</span>
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="text-slate-400 font-mono text-[11px]">AI Probability:</span>
-                    <span class="font-mono font-bold ${isAI ? 'text-rose-400' : 'text-emerald-400'} text-xs">${scaleVal}%</span>
+                    <span class="font-mono font-bold ${isSuspicious ? 'text-rose-400' : 'text-emerald-400'} text-xs">${scaleVal}%</span>
                 </div>
             </div>
 
             <!-- Mini Progress bar for this paragraph -->
             <div class="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
-                <div class="${isAI ? 'bg-rose-500' : 'bg-emerald-500'} h-1.5 rounded-full" style="width: ${scaleVal}%"></div>
+                <div class="${isSuspicious ? 'bg-rose-500' : 'bg-emerald-500'} h-1.5 rounded-full" style="width: ${scaleVal}%"></div>
             </div>
 
             <p class="text-xs text-slate-200 leading-relaxed font-normal">${escapeHtml(p.text)}</p>
@@ -629,10 +670,11 @@ function renderParagraphsList() {
 // BATCH CSV / TSV ANALYSIS
 // ----------------------------------------------------
 function handleFileSelected(event) {
-    const file = event.target.files[0];
+    const file = event.target.files && event.target.files[0];
     if (file) {
         handleSelectedBatchFile(file);
     }
+    event.target.value = '';
 }
 
 function handleSelectedBatchFile(file) {
@@ -728,11 +770,16 @@ function abortAnalysis(type) {
 }
 
 function renderBatchResult(data) {
-    document.getElementById('batch-total-rows').textContent = data.total_rows.toLocaleString();
-    document.getElementById('batch-ai-count').textContent = data.ai_rows.toLocaleString();
-    document.getElementById('batch-ai-pct').textContent = `(${data.ai_percentage}%)`;
-    document.getElementById('batch-human-count').textContent = data.human_rows.toLocaleString();
-    document.getElementById('batch-human-pct').textContent = `(${(100 - data.ai_percentage).toFixed(1)}%)`;
+    const totalRows = data.total_rows || 0;
+    const aiRows = (data.ai_rows !== undefined) ? data.ai_rows : (data.ai_count || 0);
+    const humanRows = (data.human_rows !== undefined) ? data.human_rows : (data.human_count || 0);
+    const aiPct = (data.ai_percentage !== undefined) ? data.ai_percentage : 0;
+
+    document.getElementById('batch-total-rows').textContent = totalRows.toLocaleString();
+    document.getElementById('batch-ai-count').textContent = aiRows.toLocaleString();
+    document.getElementById('batch-ai-pct').textContent = `(${aiPct}%)`;
+    document.getElementById('batch-human-count').textContent = humanRows.toLocaleString();
+    document.getElementById('batch-human-pct').textContent = `(${(100 - aiPct).toFixed(1)}%)`;
 
     const thead = document.getElementById('batch-table-head');
     const tbody = document.getElementById('batch-table-body');

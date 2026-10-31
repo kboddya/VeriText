@@ -78,6 +78,11 @@ class CancellationManager:
                 return True
             return False
 
+    def is_cancelled(self, request_id: str) -> bool:
+        with self._lock:
+            event = self._tokens.get(request_id)
+            return event.is_set() if event is not None else False
+
     def unregister(self, request_id: str) -> None:
         with self._lock:
             self._tokens.pop(request_id, None)

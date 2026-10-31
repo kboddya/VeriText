@@ -138,13 +138,13 @@
                 <!-- PANEL 2: Document File Upload Mode -->
                 <div id="input-panel-file" class="hidden space-y-4">
                     <div id="unified-dropzone" onclick="document.getElementById('unified-file-input').click()" class="border-2 border-dashed border-slate-800 hover:border-blue-500/60 bg-slate-950/60 hover:bg-slate-950/90 rounded-2xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-3">
-                        <input type="file" id="unified-file-input" accept=".md,.markdown,.docx,.pdf,.txt" class="hidden" onchange="handleUnifiedFileSelected(event)">
-                        <div class="w-14 h-14 rounded-2xl bg-blue-600/10 text-blue-400 flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/10">
+                        <input type="file" id="unified-file-input" accept=".md,.markdown,.docx,.pdf,.txt" class="hidden" onclick="event.stopPropagation()" onchange="handleUnifiedFileSelected(event)">
+                        <div class="w-14 h-14 rounded-2xl bg-blue-600/10 text-blue-400 flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/10 pointer-events-none">
                             <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                             </svg>
                         </div>
-                        <div class="text-center">
+                        <div class="text-center pointer-events-none">
                             <span id="dropzone-label" class="text-sm font-semibold text-slate-200 block">Click to select or drag and drop a document file here</span>
                             <span id="dropzone-sublabel" class="text-xs text-slate-400 block mt-1">Supported formats: <span class="text-blue-400 font-mono">.pdf, .docx, .md, .txt</span></span>
                         </div>
@@ -230,21 +230,18 @@
             <!-- ======================================================== -->
             <div id="unified-results-card" class="hidden space-y-6">
 
-                <!-- 1. Top Verdict Banner & Confidence Status -->
+                <!-- 1. Top Verdict Banner: Verdict Confidence Status -->
                 <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800">
                         <div>
-                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold block">Authentication Verdict & Confidence Status</span>
-                            <div class="flex flex-wrap items-center gap-3 mt-2">
-                                <div id="main-verdict-container" class="inline-flex items-center gap-2.5 px-6 py-2 rounded-full border text-base font-bold shadow-sm">
-                                    <span id="main-verdict-icon"></span>
-                                    <span id="main-verdict-text">Human-Written (Human)</span>
-                                </div>
-                                <div id="confidence-status-badge" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-bold shadow-sm">
-                                    <span id="confidence-status-label">Grade A (Verified Human)</span>
+                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold block">Verdict Confidence Status</span>
+                            <div class="mt-2.5 flex items-center gap-3">
+                                <div id="confidence-status-container" class="inline-flex items-center gap-2.5 px-6 py-2.5 rounded-xl border text-base font-bold shadow-lg transition-all">
+                                    <span id="confidence-status-icon"></span>
+                                    <span id="confidence-status-text">Grade A (Verified Human)</span>
                                 </div>
                             </div>
-                            <p id="confidence-status-desc" class="text-xs text-slate-400 mt-2 max-w-xl">High confidence human authorship with natural lexical variety and burstiness.</p>
+                            <p id="confidence-status-desc" class="text-xs text-slate-300 mt-2.5 max-w-2xl leading-relaxed">High confidence human authorship with natural lexical variety and burstiness.</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
                             <span id="active-source-badge" class="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300">Source: Direct Text</span>
@@ -387,14 +384,14 @@
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
                 <!-- Dropzone -->
                 <div id="file-dropzone" onclick="document.getElementById('file-input').click()" class="border-2 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/60 rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center">
-                    <input type="file" id="file-input" accept=".csv,.tsv" class="hidden" onchange="handleFileSelected(event)">
-                    <div class="w-12 h-12 rounded-full bg-blue-600/10 text-blue-400 flex items-center justify-center mb-3">
+                    <input type="file" id="file-input" accept=".csv,.tsv" class="hidden" onclick="event.stopPropagation()" onchange="handleFileSelected(event)">
+                    <div class="w-12 h-12 rounded-full bg-blue-600/10 text-blue-400 flex items-center justify-center mb-3 pointer-events-none">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                         </svg>
                     </div>
-                    <span id="batch-dropzone-text" class="text-sm font-medium text-slate-200">Click to select a .csv / .tsv file or drag and drop it here</span>
-                    <span class="text-xs text-slate-500 mt-1">Supports datasets of any size (up to 250 MB)</span>
+                    <span id="batch-dropzone-text" class="text-sm font-medium text-slate-200 pointer-events-none">Click to select a .csv / .tsv file or drag and drop it here</span>
+                    <span class="text-xs text-slate-500 mt-1 pointer-events-none">Supports datasets of any size (up to 250 MB)</span>
                 </div>
 
                 <!-- Batch configuration -->
