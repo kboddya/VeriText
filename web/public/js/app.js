@@ -1,58 +1,99 @@
-// VeriText Modern AI Detector Frontend Application Logic
+// VeriText Hybrid AI Detector Frontend Application Logic
+
+let selectedUnifiedFile = null;
+let lastUnifiedResult = null;
+let currentParagraphFilter = 'all'; // 'all', 'ai', 'human'
+let currentParagraphSort = 'original'; // 'original', 'desc', 'asc'
 
 let selectedBatchFile = null;
 let lastBatchResult = null;
-let selectedDocFile = null;
-let lastDocResult = null;
-let currentDocFilter = 'all';
+
+const activeRequests = {
+    unified: { controller: null, id: null },
+    batch: { controller: null, id: null },
+};
+
+function generateRequestId() {
+    return 'req_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+}
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    const bgMap = {
+        info: 'bg-slate-900 border-blue-500/50 text-blue-300',
+        warning: 'bg-slate-900 border-amber-500/50 text-amber-300',
+        error: 'bg-slate-900 border-rose-500/50 text-rose-300',
+        success: 'bg-slate-900 border-emerald-500/50 text-emerald-300',
+    };
+    const iconMap = {
+        info: `<svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`,
+        warning: `<svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>`,
+        error: `<svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`,
+        success: `<svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`,
+    };
+
+    const colorClass = bgMap[type] || bgMap.info;
+    const iconSvg = iconMap[type] || iconMap.info;
+
+    toast.className = `flex items-center gap-2 px-4 py-3 rounded-lg border ${colorClass} shadow-xl text-xs font-medium pointer-events-auto transition-all duration-300 opacity-0 translate-y-2`;
+    toast.innerHTML = `${iconSvg}<span>${escapeHtml(message)}</span>`;
+
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0', 'translate-y-2');
+        toast.classList.add('opacity-100', 'translate-y-0');
+    });
+
+    setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
 
 const SAMPLES = {
     ru_ai: "В современном мире технологии искусственного интеллекта играют ключевую роль во многих аспектах нашей повседневной жизни. Важно подчеркнуть, что интеграция нейросетевых моделей позволяет существенно оптимизировать рабочие процессы и повысить продуктивность. В заключение стоит отметить, что будущее цифровой трансформации неразрывно связано с развитием передовых алгоритмов.",
     ru_human: "Вчера наконец-то забрал заказ из пункта выдачи. Коробка была слегка помята с одного края, но внутри всё целое. Наушники классные, звук чистый, басы на месте. Правда провод зарядки коротковат, но в остальном покупкой доволен.",
     en_ai: "Artificial intelligence has become an integral part of modern society, driving innovation across various industries. It is worth noting that deep learning frameworks provide sophisticated tools for complex problem-solving. In conclusion, these technologies represent a testament to rapid technological advancement.",
+    us_constitution: "We the People of the United States, in Order to form a more perfect Union, establish Justice, insure domestic Tranquility, provide for the common defence, promote the general Welfare, and secure the Blessings of Liberty to ourselves and our Posterity, do ordain and establish this Constitution for the United States of America. All legislative Powers herein granted shall be vested in a Congress of the United States, which shall consist of a Senate and House of Representatives. The House of Representatives shall be composed of Members chosen every second Year by the People of the several States, and the Electors in each State shall have the Qualifications requisite for Electors of the most numerous Branch of the State Legislature.",
 };
 
-// Initialization
+// ----------------------------------------------------
+// INITIALIZATION
+// ----------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
     initHealthCheck();
     initDropzones();
     initTextareaCounter();
 });
 
-// Tab navigation (text, doc, batch)
-function switchTab(tab) {
-    const textTab = document.getElementById('tab-text');
-    const docTab = document.getElementById('tab-doc');
-    const batchTab = document.getElementById('tab-batch');
+// Switch between Unified view and Batch CSV view
+function switchView(view) {
+    const viewUnified = document.getElementById('view-unified');
+    const viewBatch = document.getElementById('view-batch');
+    const btnUnified = document.getElementById('view-btn-unified');
+    const btnBatch = document.getElementById('view-btn-batch');
 
-    const btnText = document.getElementById('tab-btn-text');
-    const btnDoc = document.getElementById('tab-btn-doc');
-    const btnBatch = document.getElementById('tab-btn-batch');
+    const activeClass = "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white shadow-lg shadow-blue-600/20";
+    const inactiveClass = "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition text-slate-400 hover:text-white hover:bg-slate-900/60";
 
-    const activeClass = "flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm transition-all border-blue-500 text-blue-400 bg-slate-900/40 rounded-t-lg whitespace-nowrap";
-    const inactiveClass = "flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm transition-all border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/20 rounded-t-lg whitespace-nowrap";
-
-    textTab.classList.add('hidden');
-    docTab.classList.add('hidden');
-    batchTab.classList.add('hidden');
-
-    btnText.className = inactiveClass;
-    btnDoc.className = inactiveClass;
-    btnBatch.className = inactiveClass;
-
-    if (tab === 'text') {
-        textTab.classList.remove('hidden');
-        btnText.className = activeClass;
-    } else if (tab === 'doc') {
-        docTab.classList.remove('hidden');
-        btnDoc.className = activeClass;
-    } else if (tab === 'batch') {
-        batchTab.classList.remove('hidden');
+    if (view === 'unified') {
+        viewUnified.classList.remove('hidden');
+        viewBatch.classList.add('hidden');
+        btnUnified.className = activeClass;
+        btnBatch.className = inactiveClass;
+    } else {
+        viewUnified.classList.add('hidden');
+        viewBatch.classList.remove('hidden');
+        btnUnified.className = inactiveClass;
         btnBatch.className = activeClass;
     }
 }
 
-// Health check and GPU indicator
+// Health check and Hardware Acceleration indicator
 async function initHealthCheck() {
     const statusDot = document.getElementById('status-dot');
     const statusPing = document.getElementById('status-ping');
@@ -72,7 +113,7 @@ async function initHealthCheck() {
             } else if (data.mps_available) {
                 deviceLabel.innerHTML = `<span class="text-emerald-400 font-semibold">Apple GPU:</span> Metal (MPS)`;
             } else {
-                deviceLabel.innerHTML = `<span class="text-blue-400 font-semibold">CPU:</span> ${data.device_name}`;
+                deviceLabel.innerHTML = `<span class="text-blue-400 font-semibold">CPU:</span> ${data.device_name || 'Active'}`;
             }
         } catch (err) {
             statusDot.className = "relative inline-flex rounded-full h-2 w-2 bg-rose-500";
@@ -101,121 +142,26 @@ function initTextareaCounter() {
 }
 
 function loadSample(type) {
+    clearSelectedFile();
     const textarea = document.getElementById('text-input');
     textarea.value = SAMPLES[type] || '';
     textarea.dispatchEvent(new Event('input'));
+    showToast(`Loaded sample: ${type.toUpperCase()}`, 'info');
 }
 
-function clearText() {
+function clearUnifiedInput() {
+    clearSelectedFile();
     const textarea = document.getElementById('text-input');
     textarea.value = '';
     textarea.dispatchEvent(new Event('input'));
 }
 
-// Submit single text analysis
-async function submitTextAnalysis() {
-    const text = document.getElementById('text-input').value.trim();
-    if (!text) {
-        alert('Please enter text to analyze.');
-        return;
-    }
-
-    const mode = document.getElementById('mode-select').value;
-    const btn = document.getElementById('btn-submit-text');
-    const btnLabel = document.getElementById('btn-submit-text-label');
-    const emptyState = document.getElementById('results-empty-state');
-    const resultsCard = document.getElementById('results-card');
-
-    btn.disabled = true;
-    btnLabel.textContent = 'Running inference...';
-
-    try {
-        const res = await fetch('/api/score', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                text: text,
-                mode: mode,
-            })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.detail || 'Classification error');
-        }
-
-        const data = await res.json();
-        renderTextResult(data);
-
-        emptyState.classList.add('hidden');
-        resultsCard.classList.remove('hidden');
-    } catch (e) {
-        alert('Analysis error: ' + e.message);
-    } finally {
-        btn.disabled = false;
-        btnLabel.textContent = 'Analyze Text';
-    }
-}
-
-function renderTextResult(data) {
-    const isAI = data.label === 'ai';
-    const verdictContainer = document.getElementById('verdict-container');
-    const verdictIcon = document.getElementById('verdict-icon');
-    const verdictText = document.getElementById('verdict-text');
-    const activeModelBadge = document.getElementById('active-model-badge');
-    const scaleIndicator = document.getElementById('scale-indicator');
-    const scaleValue = document.getElementById('scale-value');
-    const metricScore = document.getElementById('metric-score');
-    const metricDevice = document.getElementById('metric-device');
-    const markersContainer = document.getElementById('markers-container');
-    const markersList = document.getElementById('markers-list');
-
-    if (isAI) {
-        verdictContainer.className = "mt-2 inline-flex items-center gap-2 px-6 py-2.5 rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-400 text-base font-bold shadow-lg shadow-rose-500/10";
-        verdictIcon.innerHTML = `<svg class="w-5 h-5 text-rose-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>`;
-        verdictText.textContent = "AI-Generated (AI)";
-    } else {
-        verdictContainer.className = "mt-2 inline-flex items-center gap-2 px-6 py-2.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-base font-bold shadow-lg shadow-emerald-500/10";
-        verdictIcon.innerHTML = `<svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>`;
-        verdictText.textContent = "Human-Written (Human)";
-    }
-
-    if (activeModelBadge) {
-        activeModelBadge.textContent = `Model: ${data.model_used || 'RuBERT-AI'}`;
-    }
-
-    const scale = Math.max(0, Math.min(100, data.human_ai_scale || 50));
-    scaleIndicator.style.left = `${scale}%`;
-    scaleValue.textContent = `${scale.toFixed(2)}%`;
-
-    metricScore.textContent = data.score.toFixed(3);
-    metricDevice.textContent = data.device;
-
-    // Render detected stylistic markers
-    if (data.markers && data.markers.length > 0) {
-        markersContainer.classList.remove('hidden');
-        markersList.innerHTML = '';
-        data.markers.forEach(m => {
-            const item = document.createElement('div');
-            item.className = "p-2 rounded bg-slate-950 border border-slate-800 text-xs flex justify-between items-center";
-            item.innerHTML = `
-                <div>
-                    <span class="text-rose-400 font-mono font-semibold">«${escapeHtml(m.phrase)}»</span>
-                    <span class="text-slate-400 block text-[11px]">${escapeHtml(m.description)}</span>
-                </div>
-                <span class="text-slate-500 text-[11px] font-mono font-bold ml-2">x${m.count}</span>
-            `;
-            markersList.appendChild(item);
-        });
-    } else {
-        markersContainer.classList.add('hidden');
-    }
-}
-
-// Dropzone logic
+// ----------------------------------------------------
+// DROPZONE LOGIC
+// ----------------------------------------------------
 function initDropzones() {
-    setupDropzone('file-dropzone', handleSelectedFile);
-    setupDropzone('doc-dropzone', handleSelectedDocFile);
+    setupDropzone('unified-dropzone', handleSelectedUnifiedFile);
+    setupDropzone('file-dropzone', handleSelectedBatchFile);
 }
 
 function setupDropzone(dropzoneId, onFileDrop) {
@@ -247,295 +193,459 @@ function setupDropzone(dropzoneId, onFileDrop) {
     });
 }
 
-// ----------------------------------------------------
-// DOCUMENT ANALYSIS LOGIC (.md, .docx, .pdf, .txt)
-// ----------------------------------------------------
-
-function handleDocFileSelected(event) {
+function handleUnifiedFileSelected(event) {
     const file = event.target.files[0];
     if (file) {
-        handleSelectedDocFile(file);
+        handleSelectedUnifiedFile(file);
     }
 }
 
-function handleSelectedDocFile(file) {
-    selectedDocFile = file;
-    const dropzoneText = document.getElementById('doc-dropzone-text');
-    const dropzoneSubtext = document.getElementById('doc-dropzone-subtext');
-    const btn = document.getElementById('btn-run-doc');
-    const btnLabel = document.getElementById('btn-run-doc-label');
+function handleSelectedUnifiedFile(file) {
+    selectedUnifiedFile = file;
+    const badge = document.getElementById('selected-file-badge');
+    const fileNameEl = document.getElementById('selected-file-name');
+    const fileSizeEl = document.getElementById('selected-file-size');
+    const dropzoneLabel = document.getElementById('dropzone-label');
 
     const sizeKb = (file.size / 1024).toFixed(1);
-    const ext = file.name.split('.').pop().toUpperCase();
-    dropzoneText.textContent = `Selected document: [${ext}] ${file.name} (${sizeKb} KB)`;
-    dropzoneSubtext.textContent = 'Click "Inspect Document" below to extract text and analyze';
+    fileNameEl.textContent = file.name;
+    fileSizeEl.textContent = `(${sizeKb} KB)`;
+    badge.classList.remove('hidden');
 
-    btn.disabled = false;
-    btnLabel.textContent = `Inspect Document (${file.name})`;
+    dropzoneLabel.textContent = `Attached file: ${file.name} (${sizeKb} KB)`;
+    showToast(`Attached document: ${file.name}`, 'info');
 }
 
-async function submitDocAnalysis() {
-    if (!selectedDocFile) {
-        alert('Please select a valid document file (.md, .docx, .pdf, .txt)');
+function clearSelectedFile() {
+    selectedUnifiedFile = null;
+    const badge = document.getElementById('selected-file-badge');
+    const fileInput = document.getElementById('unified-file-input');
+    const dropzoneLabel = document.getElementById('dropzone-label');
+
+    if (badge) badge.classList.add('hidden');
+    if (fileInput) fileInput.value = '';
+    if (dropzoneLabel) dropzoneLabel.textContent = 'Or drag & drop / click to attach a document (.pdf, .docx, .md, .txt)';
+}
+
+// ----------------------------------------------------
+// HYBRID ANALYSIS EXECUTION
+// ----------------------------------------------------
+async function submitHybridAnalysis() {
+    const textVal = document.getElementById('text-input').value.trim();
+    if (!selectedUnifiedFile && !textVal) {
+        alert('Please enter text to analyze or attach a document file.');
         return;
     }
 
-    const mode = document.getElementById('doc-mode-select').value;
-    const btn = document.getElementById('btn-run-doc');
-    const btnLabel = document.getElementById('btn-run-doc-label');
-    const resultsContainer = document.getElementById('doc-results-container');
+    const mode = document.getElementById('model-select').value;
+    const btn = document.getElementById('btn-run-analysis');
+    const btnLabel = document.getElementById('btn-run-label');
+    const btnAbort = document.getElementById('btn-abort-analysis');
+    const emptyState = document.getElementById('unified-empty-state');
+    const resultsCard = document.getElementById('unified-results-card');
+
+    const controller = new AbortController();
+    const reqId = generateRequestId();
+    activeRequests.unified = { controller, id: reqId };
 
     btn.disabled = true;
-    btnLabel.textContent = 'Extracting text and analyzing...';
-
-    const formData = new FormData();
-    formData.append('file', selectedDocFile);
-    formData.append('mode', mode);
+    btnLabel.textContent = 'Running Hybrid Inference...';
+    btnAbort.classList.remove('hidden');
 
     try {
-        const res = await fetch('/api/score-document', {
-            method: 'POST',
-            body: formData
-        });
+        let res;
+        if (selectedUnifiedFile) {
+            // Upload file to document analysis endpoint
+            const formData = new FormData();
+            formData.append('file', selectedUnifiedFile);
+            formData.append('mode', mode);
+            formData.append('request_id', reqId);
+
+            res = await fetch('/api/score-document', {
+                method: 'POST',
+                headers: { 'X-Request-ID': reqId },
+                body: formData,
+                signal: controller.signal,
+            });
+        } else {
+            // Send direct text
+            res = await fetch('/api/score', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Request-ID': reqId,
+                },
+                body: JSON.stringify({
+                    text: textVal,
+                    mode: mode,
+                    request_id: reqId,
+                }),
+                signal: controller.signal,
+            });
+        }
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.detail || 'Document analysis error');
+            throw new Error(err.detail || 'Inference failed');
         }
 
         const data = await res.json();
-        lastDocResult = data;
-        renderDocResult(data);
-        resultsContainer.classList.remove('hidden');
+        lastUnifiedResult = data;
+        renderUnifiedResults(data);
+
+        emptyState.classList.add('hidden');
+        resultsCard.classList.remove('hidden');
+        showToast('Hybrid analysis completed successfully', 'success');
+
+        // Smooth scroll to results
+        resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
     } catch (e) {
-        alert('Error: ' + e.message);
+        if (e.name === 'AbortError') {
+            showToast('Analysis cancelled by user', 'warning');
+        } else {
+            alert('Analysis error: ' + e.message);
+            showToast('Error: ' + e.message, 'error');
+        }
     } finally {
         btn.disabled = false;
-        btnLabel.textContent = `Inspect Document (${selectedDocFile.name})`;
+        btnLabel.textContent = 'Run Hybrid Analysis';
+        btnAbort.classList.add('hidden');
+        activeRequests.unified = { controller: null, id: null };
     }
 }
 
-function renderDocResult(data) {
-    const summary = data.summary;
-    const isAI = summary.overall_label === 'ai';
+function abortUnifiedAnalysis() {
+    const item = activeRequests.unified;
+    if (!item) return;
 
-    document.getElementById('doc-result-filename').textContent = data.filename;
-    document.getElementById('doc-result-stats').textContent = 
-        `${summary.word_count.toLocaleString()} words | ${summary.char_count.toLocaleString()} chars | ${summary.total_paragraphs} paragraphs`;
+    if (item.id) {
+        fetch(`/api/abort/${item.id}`, { method: 'POST' }).catch(() => {});
+    }
+    if (item.controller) {
+        item.controller.abort();
+    }
+    activeRequests.unified = { controller: null, id: null };
+}
 
-    const verdictContainer = document.getElementById('doc-verdict-container');
-    const verdictIcon = document.getElementById('doc-verdict-icon');
-    const verdictText = document.getElementById('doc-verdict-text');
-    const modelMetric = document.getElementById('doc-model-metric');
+// ----------------------------------------------------
+// RENDERING RESULTS DASHBOARD
+// ----------------------------------------------------
+function renderUnifiedResults(data) {
+    const summary = data.summary || {};
+    const isAI = (data.label === 'ai') || (summary.overall_label === 'ai');
+
+    // 1. Top Verdict Banner
+    const verdictContainer = document.getElementById('main-verdict-container');
+    const verdictIcon = document.getElementById('main-verdict-icon');
+    const verdictText = document.getElementById('main-verdict-text');
+    const modelBadge = document.getElementById('active-model-badge');
+    const deviceBadge = document.getElementById('active-device-badge');
 
     if (isAI) {
-        verdictContainer.className = "inline-flex items-center gap-2 px-5 py-2 rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-400 text-sm font-bold shadow-lg shadow-rose-500/10";
-        verdictIcon.innerHTML = `<svg class="w-4 h-4 text-rose-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>`;
-        verdictText.textContent = "AI-Generated (AI)";
+        verdictContainer.className = "mt-2 inline-flex items-center gap-2.5 px-6 py-2 rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-400 text-base font-bold shadow-lg shadow-rose-500/10";
+        verdictIcon.innerHTML = `<svg class="w-5 h-5 text-rose-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>`;
+        verdictText.textContent = "AI-Generated Content (AI)";
     } else {
-        verdictContainer.className = "inline-flex items-center gap-2 px-5 py-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-sm font-bold shadow-lg shadow-emerald-500/10";
-        verdictIcon.innerHTML = `<svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>`;
-        verdictText.textContent = "Human-Written (Human)";
+        verdictContainer.className = "mt-2 inline-flex items-center gap-2.5 px-6 py-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 text-base font-bold shadow-lg shadow-emerald-500/10";
+        verdictIcon.innerHTML = `<svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>`;
+        verdictText.textContent = "Human-Written Content (Human)";
     }
 
-    if (modelMetric) {
-        modelMetric.textContent = data.model_used || 'RuBERT-AI';
+    modelBadge.textContent = `Model: ${data.model_used || 'RuBERT-AI'}`;
+    deviceBadge.textContent = `Device: ${(data.device || 'Auto').toUpperCase()}`;
+
+    // 2. Dual Meters: Monolithic vs Paragraph-Weighted
+    const monolithicVal = (data.monolithic_scale !== undefined) ? data.monolithic_scale : (data.human_ai_scale || 50.0);
+    const paragraphVal = (data.paragraph_scale !== undefined) ? data.paragraph_scale : (summary.overall_scale || monolithicVal);
+
+    const monoClamped = Math.max(0, Math.min(100, monolithicVal));
+    const paraClamped = Math.max(0, Math.min(100, paragraphVal));
+
+    document.getElementById('meter-monolithic-val').textContent = `${monoClamped.toFixed(2)}%`;
+    document.getElementById('meter-monolithic-indicator').style.left = `${monoClamped}%`;
+
+    document.getElementById('meter-paragraph-val').textContent = `${paraClamped.toFixed(2)}%`;
+    document.getElementById('meter-paragraph-indicator').style.left = `${paraClamped}%`;
+
+    // 3. Stats Row
+    const words = summary.word_count || (data.full_text ? data.full_text.split(/\s+/).length : 0);
+    const chars = summary.char_count || (data.full_text ? data.full_text.length : 0);
+    const totalParas = summary.total_paragraphs || (data.paragraphs ? data.paragraphs.length : 1);
+    const aiParas = summary.ai_paragraphs || (isAI ? 1 : 0);
+    const humanParas = summary.human_paragraphs || (isAI ? 0 : 1);
+    const aiPct = summary.ai_paragraph_pct !== undefined ? summary.ai_paragraph_pct : (isAI ? 100 : 0);
+
+    document.getElementById('stat-words-chars').textContent = `${words.toLocaleString()} / ${chars.toLocaleString()}`;
+    document.getElementById('stat-total-paras').textContent = totalParas;
+    document.getElementById('stat-ai-paras').textContent = `${aiParas} (${aiPct}%)`;
+    document.getElementById('stat-human-paras').textContent = `${humanParas} (${(100 - aiPct).toFixed(1)}%)`;
+
+    // 4. Stylistic Markers
+    const markersBox = document.getElementById('markers-box');
+    const markersList = document.getElementById('markers-list');
+    if (data.markers && data.markers.length > 0) {
+        markersBox.classList.remove('hidden');
+        markersList.innerHTML = '';
+        data.markers.forEach(m => {
+            const item = document.createElement('div');
+            item.className = "p-2 rounded bg-slate-900 border border-slate-800 text-xs flex justify-between items-center";
+            item.innerHTML = `
+                <div>
+                    <span class="text-rose-400 font-mono font-semibold">«${escapeHtml(m.phrase)}»</span>
+                    <span class="text-slate-400 block text-[11px]">${escapeHtml(m.description)}</span>
+                </div>
+                <span class="text-slate-500 text-[11px] font-mono font-bold ml-2">x${m.count}</span>
+            `;
+            markersList.appendChild(item);
+        });
+    } else {
+        markersBox.classList.add('hidden');
     }
 
-    const scale = Math.max(0, Math.min(100, summary.overall_scale || 50));
-    document.getElementById('doc-scale-indicator').style.left = `${scale}%`;
-    document.getElementById('doc-scale-value').textContent = `${scale.toFixed(2)}%`;
+    // 5. Update Filters Count
+    const paragraphs = data.paragraphs || [];
+    document.getElementById('paras-count-badge').textContent = `${paragraphs.length} sections`;
+    document.getElementById('filter-count-all').textContent = paragraphs.length;
+    document.getElementById('filter-count-ai').textContent = aiParas;
+    document.getElementById('filter-count-human').textContent = humanParas;
 
-    document.getElementById('doc-ai-paras').textContent = summary.ai_paragraphs;
-    document.getElementById('doc-ai-pct').textContent = `(${summary.ai_paragraph_pct}%)`;
-    document.getElementById('doc-human-paras').textContent = summary.human_paragraphs;
-    document.getElementById('doc-human-pct').textContent = `(${(100 - summary.ai_paragraph_pct).toFixed(2)}%)`;
-
-    document.getElementById('count-filter-all').textContent = data.paragraphs.length;
-    document.getElementById('count-filter-ai').textContent = summary.ai_paragraphs;
-    document.getElementById('count-filter-human').textContent = summary.human_paragraphs;
-
-    renderDocParagraphsList(data.paragraphs);
+    // 6. Render Paragraphs List with Current Filter and Sorting
+    renderParagraphsList();
 }
 
-function renderDocParagraphsList(paragraphs) {
-    const listContainer = document.getElementById('doc-paragraphs-list');
-    listContainer.innerHTML = '';
+// ----------------------------------------------------
+// PARAGRAPH FILTERING & SORTING LOGIC
+// ----------------------------------------------------
+function setParagraphFilter(filter) {
+    currentParagraphFilter = filter;
+    
+    const btnAll = document.getElementById('filter-btn-all');
+    const btnAi = document.getElementById('filter-btn-ai');
+    const btnHuman = document.getElementById('filter-btn-human');
 
-    paragraphs.forEach(p => {
+    const activeClass = "px-3 py-1 rounded bg-blue-600 text-white font-medium transition";
+    const inactiveClass = "px-3 py-1 rounded text-slate-400 hover:text-white transition";
+
+    btnAll.className = (filter === 'all') ? activeClass : inactiveClass;
+    btnAi.className = (filter === 'ai') ? activeClass : inactiveClass;
+    btnHuman.className = (filter === 'human') ? activeClass : inactiveClass;
+
+    renderParagraphsList();
+}
+
+function changeParagraphSort(sortType) {
+    currentParagraphSort = sortType;
+    renderParagraphsList();
+}
+
+function renderParagraphsList() {
+    if (!lastUnifiedResult || !lastUnifiedResult.paragraphs) return;
+
+    const container = document.getElementById('paragraphs-container');
+    container.innerHTML = '';
+
+    let list = [...lastUnifiedResult.paragraphs];
+
+    // 1. Filter
+    if (currentParagraphFilter === 'ai') {
+        list = list.filter(p => p.label === 'ai');
+    } else if (currentParagraphFilter === 'human') {
+        list = list.filter(p => p.label !== 'ai');
+    }
+
+    // 2. Sort
+    if (currentParagraphSort === 'desc') {
+        // Highest AI % First (спадание)
+        list.sort((a, b) => (b.human_ai_scale || 0) - (a.human_ai_scale || 0));
+    } else if (currentParagraphSort === 'asc') {
+        // Lowest AI % First (возрастание)
+        list.sort((a, b) => (a.human_ai_scale || 0) - (b.human_ai_scale || 0));
+    } else {
+        // Original text order (#1, #2, #3...)
+        list.sort((a, b) => (a.index || 0) - (b.index || 0));
+    }
+
+    if (list.length === 0) {
+        container.innerHTML = `<div class="text-center py-8 text-xs text-slate-500">No paragraphs match the selected filter.</div>`;
+        return;
+    }
+
+    list.forEach(p => {
         const isAI = p.label === 'ai';
-        if (currentDocFilter === 'ai' && !isAI) return;
-        if (currentDocFilter === 'human' && isAI) return;
-
         const card = document.createElement('div');
         const borderClass = isAI ? 'border-rose-500/30 bg-rose-950/10' : 'border-emerald-500/30 bg-emerald-950/10';
         const badgeClass = isAI ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-        const scaleVal = p.human_ai_scale ? p.human_ai_scale.toFixed(1) : '50.0';
+        const scaleVal = (p.human_ai_scale !== undefined) ? p.human_ai_scale.toFixed(1) : '50.0';
+        const wordCount = p.word_count || (p.text ? p.text.split(/\s+/).length : 0);
 
-        card.className = `p-4 rounded-xl border ${borderClass} space-y-2 transition`;
+        card.className = `p-4 rounded-xl border ${borderClass} space-y-2.5 transition`;
         card.innerHTML = `
             <div class="flex items-center justify-between text-xs">
                 <div class="flex items-center gap-2">
-                    <span class="font-mono text-slate-400">#${p.index}</span>
+                    <span class="font-mono text-slate-400 font-semibold">#${p.index}</span>
                     <span class="px-2 py-0.5 rounded text-[11px] font-bold border ${badgeClass}">
-                        ${isAI ? 'AI-Generated (AI)' : 'Human-Written (Human)'}
+                        ${isAI ? 'AI-Generated' : 'Human-Written'}
                     </span>
+                    <span class="text-[11px] text-slate-500 font-mono">${wordCount} words</span>
                 </div>
-                <div class="text-slate-400 font-mono text-[11px]">
-                    AI Probability: <span class="font-semibold text-slate-200">${scaleVal}%</span>
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-400 font-mono text-[11px]">AI Probability:</span>
+                    <span class="font-mono font-bold ${isAI ? 'text-rose-400' : 'text-emerald-400'} text-xs">${scaleVal}%</span>
                 </div>
             </div>
+
+            <!-- Mini Progress bar for this paragraph -->
+            <div class="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+                <div class="${isAI ? 'bg-rose-500' : 'bg-emerald-500'} h-1.5 rounded-full" style="width: ${scaleVal}%"></div>
+            </div>
+
             <p class="text-xs text-slate-200 leading-relaxed font-normal">${escapeHtml(p.text)}</p>
         `;
-        listContainer.appendChild(card);
+        container.appendChild(card);
     });
-
-    if (listContainer.children.length === 0) {
-        listContainer.innerHTML = `<div class="text-center py-6 text-xs text-slate-500">No sections match the selected filter.</div>`;
-    }
-}
-
-function filterDocParagraphs(filter) {
-    currentDocFilter = filter;
-    const btnAll = document.getElementById('doc-filter-all');
-    const btnAi = document.getElementById('doc-filter-ai');
-    const btnHuman = document.getElementById('doc-filter-human');
-
-    const activeClass = "text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white font-medium transition";
-    const inactiveClass = "text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition";
-
-    btnAll.className = filter === 'all' ? activeClass : inactiveClass;
-    btnAi.className = filter === 'ai' ? activeClass : inactiveClass;
-    btnHuman.className = filter === 'human' ? activeClass : inactiveClass;
-
-    if (lastDocResult && lastDocResult.paragraphs) {
-        renderDocParagraphsList(lastDocResult.paragraphs);
-    }
-}
-
-function copyDocTextToEditor() {
-    if (!lastDocResult || !lastDocResult.full_text) return;
-    const textarea = document.getElementById('text-input');
-    textarea.value = lastDocResult.full_text;
-    textarea.dispatchEvent(new Event('input'));
-    switchTab('text');
 }
 
 // ----------------------------------------------------
-// BATCH CSV / TSV ANALYSIS LOGIC
+// BATCH CSV / TSV ANALYSIS
 // ----------------------------------------------------
-
 function handleFileSelected(event) {
-    const file = event.target ? event.target.files[0] : event;
+    const file = event.target.files[0];
     if (file) {
-        handleSelectedFile(file);
+        handleSelectedBatchFile(file);
     }
 }
 
-function handleSelectedFile(file) {
+function handleSelectedBatchFile(file) {
     selectedBatchFile = file;
-    const dropzoneText = document.getElementById('dropzone-text');
-    const dropzoneSubtext = document.getElementById('dropzone-subtext');
+    const dropzoneText = document.getElementById('batch-dropzone-text');
     const btn = document.getElementById('btn-run-batch');
     const btnLabel = document.getElementById('btn-run-batch-label');
 
-    const sizeKb = (file.size / 1024).toFixed(1);
-    dropzoneText.textContent = `Selected file: ${file.name} (${sizeKb} KB)`;
-    dropzoneSubtext.textContent = 'Click "Run Batch Scoring" below to begin inference';
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+    dropzoneText.textContent = `Selected: ${file.name} (${sizeMb} MB)`;
 
     btn.disabled = false;
-    btnLabel.textContent = `Run Batch Scoring (${file.name})`;
+    btnLabel.textContent = `Process Dataset (${file.name})`;
 }
 
 async function submitBatchAnalysis() {
     if (!selectedBatchFile) {
-        alert('Please select a CSV or TSV file');
+        alert('Please select a .csv or .tsv file.');
         return;
     }
 
-    const textColumn = document.getElementById('batch-text-column').value.trim();
+    const textCol = document.getElementById('batch-text-column').value.trim();
     const mode = document.getElementById('batch-mode-select').value;
-    const batchSize = document.getElementById('batch-size-input').value || 32;
+    const batchSize = parseInt(document.getElementById('batch-size-input').value) || 32;
 
     const btn = document.getElementById('btn-run-batch');
     const btnLabel = document.getElementById('btn-run-batch-label');
+    const btnAbort = document.getElementById('btn-abort-batch');
     const resultsContainer = document.getElementById('batch-results-container');
 
+    const controller = new AbortController();
+    const reqId = generateRequestId();
+    activeRequests.batch = { controller, id: reqId };
+
     btn.disabled = true;
-    btnLabel.textContent = 'Processing dataset batches on model... Please wait';
+    btnLabel.textContent = 'Processing Batch Dataset...';
+    btnAbort.classList.remove('hidden');
 
     const formData = new FormData();
     formData.append('file', selectedBatchFile);
-    if (textColumn) formData.append('text_column', textColumn);
     formData.append('mode', mode);
     formData.append('batch_size', batchSize);
+    formData.append('request_id', reqId);
+    if (textCol) {
+        formData.append('text_column', textCol);
+    }
 
     try {
         const res = await fetch('/api/score-file', {
             method: 'POST',
-            body: formData
+            headers: { 'X-Request-ID': reqId },
+            body: formData,
+            signal: controller.signal,
         });
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.detail || 'Dataset processing error');
+            throw new Error(err.detail || 'Batch processing failed');
         }
 
         const data = await res.json();
         lastBatchResult = data;
         renderBatchResult(data);
         resultsContainer.classList.remove('hidden');
+        showToast('Batch processing finished', 'success');
+
     } catch (e) {
-        alert('File processing error: ' + e.message);
+        if (e.name === 'AbortError') {
+            showToast('Batch analysis aborted', 'warning');
+        } else {
+            alert('Error: ' + e.message);
+            showToast('Error: ' + e.message, 'error');
+        }
     } finally {
         btn.disabled = false;
-        btnLabel.textContent = `Run Batch Scoring (${selectedBatchFile.name})`;
+        btnLabel.textContent = `Process Dataset (${selectedBatchFile.name})`;
+        btnAbort.classList.add('hidden');
+        activeRequests.batch = { controller: null, id: null };
     }
 }
 
+function abortAnalysis(type) {
+    const item = activeRequests[type];
+    if (!item) return;
+
+    if (item.id) {
+        fetch(`/api/abort/${item.id}`, { method: 'POST' }).catch(() => {});
+    }
+    if (item.controller) {
+        item.controller.abort();
+    }
+    activeRequests[type] = { controller: null, id: null };
+}
+
 function renderBatchResult(data) {
-    const summary = data.summary;
-    document.getElementById('batch-total-rows').textContent = summary.total_rows.toLocaleString();
-    document.getElementById('batch-ai-count').textContent = summary.ai_count.toLocaleString();
-    document.getElementById('batch-ai-pct').textContent = `(${summary.ai_percentage}%)`;
-    document.getElementById('batch-human-count').textContent = summary.human_count.toLocaleString();
-    document.getElementById('batch-human-pct').textContent = `(${(100 - summary.ai_percentage).toFixed(2)}%)`;
+    document.getElementById('batch-total-rows').textContent = data.total_rows.toLocaleString();
+    document.getElementById('batch-ai-count').textContent = data.ai_rows.toLocaleString();
+    document.getElementById('batch-ai-pct').textContent = `(${data.ai_percentage}%)`;
+    document.getElementById('batch-human-count').textContent = data.human_rows.toLocaleString();
+    document.getElementById('batch-human-pct').textContent = `(${(100 - data.ai_percentage).toFixed(1)}%)`;
 
     const thead = document.getElementById('batch-table-head');
     const tbody = document.getElementById('batch-table-body');
     thead.innerHTML = '';
     tbody.innerHTML = '';
 
-    const trHead = document.createElement('tr');
-    data.preview_columns.forEach(col => {
-        const th = document.createElement('th');
-        th.className = "p-2.5 whitespace-nowrap";
-        if (col.startsWith('ai_')) {
-            th.className += " text-blue-400 bg-blue-950/30";
-        }
-        th.textContent = col;
-        trHead.appendChild(th);
-    });
-    thead.appendChild(trHead);
+    if (!data.preview || data.preview.length === 0) return;
 
-    data.preview_rows.forEach(row => {
+    const cols = Object.keys(data.preview[0]);
+    const headerRow = document.createElement('tr');
+    cols.forEach(col => {
+        const th = document.createElement('th');
+        th.className = "px-4 py-2 font-semibold";
+        th.textContent = col;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+
+    data.preview.forEach(row => {
         const tr = document.createElement('tr');
-        data.preview_columns.forEach(col => {
+        tr.className = "hover:bg-slate-800/40";
+        cols.forEach(col => {
             const td = document.createElement('td');
-            td.className = "p-2.5 max-w-xs truncate border-slate-800";
+            td.className = "px-4 py-2 truncate max-w-xs";
             const val = row[col];
-            
-            if (col === 'ai_detector_label') {
-                if (val === 'ai') {
-                    td.innerHTML = `<span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 font-bold">AI</span>`;
-                } else {
-                    td.innerHTML = `<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">Human</span>`;
-                }
-            } else if (col === 'ai_probability_pct' || col === 'ai_score') {
-                td.textContent = typeof val === 'number' ? (col === 'ai_probability_pct' ? `${val.toFixed(1)}%` : val.toFixed(3)) : val;
-                td.className += " font-semibold text-slate-200";
+            if (col === 'ai_prediction') {
+                const isAI = String(val).toLowerCase() === 'ai';
+                td.innerHTML = `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${isAI ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'}">${val}</span>`;
+            } else if (col === 'human_ai_scale') {
+                td.textContent = (typeof val === 'number') ? `${val.toFixed(1)}%` : val;
             } else {
-                td.textContent = val !== null && val !== undefined ? String(val) : '';
+                td.textContent = val !== null ? String(val) : '';
             }
             tr.appendChild(td);
         });
@@ -544,26 +654,22 @@ function renderBatchResult(data) {
 }
 
 function downloadScoredCSV() {
-    if (!lastBatchResult || !lastBatchResult.csv_content) {
-        alert('No scored dataset available to download');
+    if (!lastBatchResult || !lastBatchResult.download_token) {
+        alert('No scored data available for download.');
         return;
     }
-    const blob = new Blob([lastBatchResult.csv_content], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = lastBatchResult.filename || 'scored_dataset.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    window.location.href = `/api/download/${lastBatchResult.download_token}`;
 }
 
+// ----------------------------------------------------
+// UTILITIES
+// ----------------------------------------------------
 function escapeHtml(str) {
-    return str
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }

@@ -12,6 +12,14 @@ Available as both a **FastAPI-powered Web Application** (with paragraph-level he
 
 ## 🚀 Key Features
 
+* **Dual Hybrid Scoring Architecture:**
+  * **Macro Context Score:** Evaluates full-text continuous multi-window attention (480-token windows with a 240-token stride) to capture overarching narrative consistency.
+  * **Micro Paragraph-Weighted Score:** Segments documents into paragraphs and calculates word-count-weighted probabilities to detect localized synthetic inserts (*cyborg text*).
+  * **Dual Gauge Visualizations:** Side-by-side transparent metrics on the Web UI comparing macro vs micro predictions.
+* **Unified Web Workspace & Sorting:**
+  * Streamlined single-page interface accepting direct pasted text or attached files (`.pdf`, `.docx`, `.txt`, `.md`) via drag-and-drop.
+  * Interactive paragraph analysis cards with real-time filtering and 3 sorting modes: **Original Text Order**, **Highest AI % First (Descending)**, and **Lowest AI % First (Ascending)**.
+  * Real-time in-flight inference cancellation (*Abort / Stop* support).
 * **SOTA Language-Specific Transformer Encoders:**
   * **Russian (`ru`):** `toiletsandpaper/russian-ai-text-detector-bert` (fine-tuned on the `LLMTrace` benchmark: GPT-4o, DeepSeek, GigaChat, YandexGPT, Qwen, o1).
   * **English (`en`):** `mdrakibali/deberta-ai-detector-v3` (powered by `microsoft/deberta-v3-large`: ChatGPT, Claude 3.5, Gemini, Llama 3).
@@ -44,6 +52,7 @@ veritext/
 │   ├── __init__.py               # Package exports
 │   ├── __main__.py               # Entrypoint for python -m backend
 │   ├── config.py                 # Device selection & model catalog
+│   ├── cancellation.py           # In-flight task tracking & cancellation manager
 │   ├── engine.py                 # Transformer inference engine & sliding-window logic
 │   ├── preprocessing.py          # Canonical text normalization & language detection
 │   ├── markers.py                # Generative stylistic marker detection
@@ -52,20 +61,21 @@ veritext/
 │   └── api/                      # REST API application
 │       ├── __init__.py
 │       ├── app.py                # FastAPI application factory & lifespan
-│       ├── routes.py             # HTTP routes (/api/health, /api/score, etc.)
+│       ├── routes.py             # HTTP routes (/api/health, /api/score, /api/abort, etc.)
 │       └── schemas.py            # Pydantic request models
 ├── web/                          # Web client & proxy
 │   ├── nginx.conf                # Nginx reverse proxy configuration
 │   └── public/                   # Static Web UI assets
-│       ├── index.html            # Main single-page interface
+│       ├── index.html            # Unified hybrid single-page interface
 │       ├── css/style.css         # Custom styling
-│       └── js/app.js             # Client application logic
+│       └── js/app.js             # Client application logic with sorting & cancellation
 ├── docker/                       # Docker build specifications
 │   ├── api.Dockerfile            # Backend container with preloaded weights
 │   ├── web.Dockerfile            # Nginx web server container
 │   └── cli.Dockerfile            # Standalone CLI container
 ├── tests/                        # Automated unit tests
-│   └── test_core.py              # Core preprocessing, marker, and parser tests
+│   ├── test_core.py              # Core preprocessing, marker, and parser tests
+│   └── test_cancellation.py      # Task cancellation manager tests
 ├── docker-compose.yml            # Primary Docker Compose configuration (API + Web)
 ├── docker-compose.gpu.yml        # Compose overlay for NVIDIA GPU acceleration
 └── pyproject.toml                # Project metadata, dependencies & tool configuration

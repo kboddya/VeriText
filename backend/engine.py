@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
+from .cancellation import OperationCancelled
 from .config import (
     detect_device,
     MODELS_CATALOG,
@@ -51,11 +52,19 @@ class ModernAIDetector:
         """Determine dominant text language: 'ru' or 'en'."""
         return detect_dominant_language(text)
 
-    def score_single(self, text: str, mode: str = "auto") -> dict:
+    def score_single(
+        self,
+        text: str,
+        mode: str = "auto",
+        is_cancelled: Optional[Callable[[], bool]] = None,
+    ) -> dict:
         """
         Score a single piece of text.
         For long inputs (> 512 tokens), applies an adaptive sliding window mechanism.
         """
+        if is_cancelled and is_cancelled():
+            raise OperationCancelled("Analysis was cancelled by user.")
+
         if not text or not text.strip():
             return {
                 "label": "human",
@@ -71,11 +80,17 @@ class ModernAIDetector:
         model, tokenizer = self._load_model(chosen_key)
         model_info = MODELS_CATALOG.get(chosen_key, MODELS_CATALOG["ru"])
 
+        if is_cancelled and is_cancelled():
+            raise OperationCancelled("Analysis was cancelled by user.")
+
         normalized = normalize_text_for_detector(text, lang=chosen_key)
         if not normalized:
             normalized = text.strip()
 
         tokens = tokenizer.encode(normalized, truncation=False, add_special_tokens=True)
+
+        if is_cancelled and is_cancelled():
+            raise OperationCancelled("Analysis was cancelled by user.")
 
         # Single context window
         if len(tokens) <= MAX_TOKEN_LENGTH:
@@ -85,6 +100,9 @@ class ModernAIDetector:
                 max_length=MAX_TOKEN_LENGTH,
                 return_tensors="pt",
             ).to(self.device)
+
+            if is_cancelled and is_cancelled():
+                raise OperationCancelled("Analysis was cancelled by user.")
 
             with torch.no_grad():
                 logits = model(**encoded).logits
@@ -115,6 +133,9 @@ class ModernAIDetector:
 
         probs_list = []
         for w_tokens in window_tensors[:MAX_WINDOWS]:
+            if is_cancelled and is_cancelled():
+                raise OperationCancelled("Analysis was cancelled by user.")
+
             w_input = torch.tensor([w_tokens], dtype=torch.long, device=self.device)
             w_mask = torch.ones_like(w_input)
             with torch.no_grad():
@@ -164,8 +185,12 @@ class ModernAIDetector:
         texts: list[str],
         mode: str = "auto",
         batch_size: int = 16,
+        is_cancelled: Optional[Callable[[], bool]] = None,
     ) -> list[dict]:
         """Batch score texts with automatic preprocessing and tokenization."""
+        if is_cancelled and is_cancelled():
+            raise OperationCancelled("Analysis was cancelled by user.")
+
         if not texts:
             return []
 
@@ -180,6 +205,9 @@ class ModernAIDetector:
         model, tokenizer = self._load_model(chosen_key)
         model_info = MODELS_CATALOG.get(chosen_key, MODELS_CATALOG["ru"])
 
+        if is_cancelled and is_cancelled():
+            raise OperationCancelled("Analysis was cancelled by user.")
+
         results = []
         raw_texts = [str(t) if t is not None else "" for t in texts]
         normalized_texts = [
@@ -188,6 +216,9 @@ class ModernAIDetector:
         ]
 
         for i in range(0, len(normalized_texts), batch_size):
+            if is_cancelled and is_cancelled():
+                raise OperationCancelled("Analysis was cancelled by user.")
+
             batch = normalized_texts[i : i + batch_size]
             encoded = tokenizer(
                 batch,

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VeriText — Modern AI Text & Document Detector</title>
+    <title>VeriText — Hybrid AI Text & Document Authenticity Detector</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -39,7 +39,7 @@
                 <div>
                     <h1 class="text-lg font-semibold tracking-tight text-white flex items-center gap-2">
                         VeriText
-                        <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">v1.0</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">Hybrid Engine</span>
                     </h1>
                     <p class="text-xs text-slate-400">RuBERT-AI (GPT-4o, DeepSeek, GigaChat) + DeBERTa-v3 (ChatGPT, Claude 3.5)</p>
                 </div>
@@ -57,268 +57,298 @@
     </header>
 
     <!-- Main Container -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-        <!-- Navigation Tabs -->
-        <div class="flex space-x-2 border-b border-slate-800 mb-8 overflow-x-auto">
-            <button id="tab-btn-text" onclick="switchTab('text')" class="flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm transition-all border-blue-500 text-blue-400 bg-slate-900/40 rounded-t-lg whitespace-nowrap">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                Direct Text Analysis
-            </button>
-            <button id="tab-btn-doc" onclick="switchTab('doc')" class="flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm transition-all border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/20 rounded-t-lg whitespace-nowrap">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                </svg>
-                Documents (MD, DOCX, PDF)
-            </button>
-            <button id="tab-btn-batch" onclick="switchTab('batch')" class="flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm transition-all border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/20 rounded-t-lg whitespace-nowrap">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                </svg>
-                Batch Datasets (CSV / TSV)
-            </button>
-        </div>
-
-        <!-- TAB 1: DIRECT TEXT ANALYSIS -->
-        <div id="tab-text" class="space-y-6">
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <!-- Left: Input form -->
-                <div class="lg:col-span-7 space-y-4">
-                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
-                        <div class="flex items-center justify-between mb-3">
-                            <label for="text-input" class="text-sm font-semibold text-slate-200">
-                                Paste text to analyze:
-                            </label>
-                            <div class="flex gap-2">
-                                <button type="button" onclick="loadSample('ru_ai')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
-                                    Sample: AI (RU)
-                                </button>
-                                <button type="button" onclick="loadSample('ru_human')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
-                                    Sample: Human (RU)
-                                </button>
-                                <button type="button" onclick="loadSample('en_ai')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
-                                    Sample: AI (EN)
-                                </button>
-                            </div>
-                        </div>
-
-                        <textarea id="text-input" rows="8" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm leading-relaxed transition resize-y font-normal" placeholder="Paste any text in Russian or English here to check for AI generation..."></textarea>
-
-                        <div class="flex items-center justify-between text-xs text-slate-400 mt-2 font-mono">
-                            <span id="char-word-count">Characters: 0 | Words: 0</span>
-                            <button type="button" onclick="clearText()" class="hover:text-slate-200 transition">Clear</button>
-                        </div>
-
-                        <!-- Settings -->
-                        <div class="mt-5 pt-4 border-t border-slate-800">
-                            <label class="block text-xs font-medium text-slate-400 mb-1">Detection Model:</label>
-                            <select id="mode-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
-                                <option value="auto" selected>Auto: Automatic Language Detection (Russian ↔ English)</option>
-                                <option value="ru">Russian: RuBERT-AI (GPT-4o, DeepSeek, GigaChat, YandexGPT)</option>
-                                <option value="en">English: DeBERTa-v3 (ChatGPT, Claude 3.5, Gemini, Llama 3)</option>
-                            </select>
-                        </div>
-
-                        <!-- Submit button -->
-                        <div class="mt-5">
-                            <button id="btn-submit-text" onclick="submitTextAnalysis()" class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium rounded-lg text-sm transition shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-                                </svg>
-                                <span id="btn-submit-text-label">Analyze Text</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right: Analysis Results -->
-                <div class="lg:col-span-5">
-                    <div id="results-empty-state" class="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center flex flex-col items-center justify-center min-h-[350px]">
-                        <div class="w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400 mb-3">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                        <h3 class="text-sm font-medium text-slate-300">Results will appear here</h3>
-                        <p class="text-xs text-slate-500 max-w-xs mt-1">Paste text on the left and click "Analyze Text" to run transformer inference.</p>
-                    </div>
-
-                    <div id="results-card" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-6">
-                        <!-- Main verdict badge -->
-                        <div class="text-center">
-                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Model Verdict</span>
-                            <div id="verdict-container" class="mt-2 inline-flex items-center gap-2 px-6 py-2.5 rounded-full border text-base font-bold shadow-sm">
-                                <span id="verdict-icon"></span>
-                                <span id="verdict-text">Human-Written</span>
-                            </div>
-                            <span id="active-model-badge" class="block text-[11px] text-slate-400 mt-2 font-mono">Model: RuBERT</span>
-                        </div>
-
-                        <!-- Scale Bar: 0% Human -> 100% AI -->
-                        <div class="space-y-2 bg-slate-950 p-4 rounded-xl border border-slate-800">
-                            <div class="flex justify-between items-center text-xs">
-                                <span class="font-medium text-emerald-400">0% Human</span>
-                                <span class="text-slate-400 font-mono text-[11px]">Threshold 50%</span>
-                                <span class="font-medium text-rose-400">100% AI</span>
-                            </div>
-
-                            <div class="relative w-full h-4 rounded-full gradient-scale-bar p-0.5">
-                                <div id="scale-indicator" class="absolute top-[-4px] -ml-2 w-4 h-6 bg-white rounded-md shadow-lg border-2 border-slate-900 transform transition-all duration-500 ease-out" style="left: 50%;"></div>
-                            </div>
-
-                            <div class="flex justify-between items-center pt-1 text-xs">
-                                <span class="text-slate-400">AI Generation Probability:</span>
-                                <span id="scale-value" class="font-mono font-bold text-slate-200">50.00%</span>
-                            </div>
-                        </div>
-
-                        <!-- Stats grid -->
-                        <div class="grid grid-cols-2 gap-3 text-xs">
-                            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                                <span class="text-slate-400 block mb-0.5">Logit Score</span>
-                                <span id="metric-score" class="font-mono font-semibold text-slate-200 text-sm">0.000</span>
-                            </div>
-                            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                                <span class="text-slate-400 block mb-0.5">Compute Device</span>
-                                <span id="metric-device" class="font-mono font-semibold text-emerald-400 text-sm uppercase">Auto</span>
-                            </div>
-                        </div>
-
-                        <!-- Stylistic Markers -->
-                        <div id="markers-container" class="hidden space-y-2 pt-2 border-t border-slate-800">
-                            <span class="text-xs font-semibold text-slate-300 block">Detected AI Stylistic Markers & Clichés:</span>
-                            <div id="markers-list" class="space-y-1.5 max-h-48 overflow-y-auto pr-1"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- TAB 2: DOCUMENT ANALYSIS (MD, DOCX, PDF) -->
-        <div id="tab-doc" class="hidden space-y-6">
-            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-6">
-                <!-- Dropzone for documents -->
-                <div id="doc-dropzone" onclick="document.getElementById('doc-file-input').click()" class="border-2 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/60 rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center">
-                    <input type="file" id="doc-file-input" accept=".md,.markdown,.docx,.pdf,.txt" class="hidden" onchange="handleDocFileSelected(event)">
-                    <div class="w-14 h-14 rounded-full bg-indigo-600/10 text-indigo-400 flex items-center justify-center mb-3">
-                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                        </svg>
-                    </div>
-                    <span id="doc-dropzone-text" class="text-sm font-medium text-slate-200">Drag and drop a PDF, DOCX, MD, or TXT document here</span>
-                    <span id="doc-dropzone-subtext" class="text-xs text-slate-500 mt-1">Supported formats: .pdf, .docx, .md, .txt (essays, articles, papers, reports)</span>
-                </div>
-
-                <!-- Document controls -->
-                <div>
-                    <label class="block text-xs font-medium text-slate-400 mb-1">Classification Model:</label>
-                    <select id="doc-mode-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
-                        <option value="auto" selected>Auto: Automatic Document Language Detection</option>
-                        <option value="ru">Russian: RuBERT-AI (GPT-4o, DeepSeek, GigaChat)</option>
-                        <option value="en">English: DeBERTa-v3 (ChatGPT, Claude 3.5, Gemini)</option>
-                    </select>
-                </div>
-
-                <!-- Run button -->
-                <button id="btn-run-doc" onclick="submitDocAnalysis()" disabled class="w-full py-3 px-4 bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-500 text-white font-medium rounded-lg text-sm transition shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2">
-                    <span id="btn-run-doc-label">Select a document to inspect</span>
+        <!-- Top Mode Switcher (Unified Inspector / Batch CSV) -->
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div class="flex space-x-3">
+                <button id="view-btn-unified" onclick="switchView('unified')" class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Hybrid Text & Document Inspector
+                </button>
+                <button id="view-btn-batch" onclick="switchView('batch')" class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition text-slate-400 hover:text-white hover:bg-slate-900/60">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    Batch Datasets (CSV / TSV)
                 </button>
             </div>
-
-            <!-- Document Results Section -->
-            <div id="doc-results-container" class="hidden space-y-6">
-                <!-- Document Header & Verdict -->
-                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-6">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
-                        <div>
-                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Document Inspection</span>
-                            <h2 id="doc-result-filename" class="text-xl font-bold text-white mt-1">filename.pdf</h2>
-                            <p id="doc-result-stats" class="text-xs text-slate-400 mt-1">0 words | 0 characters | 0 paragraphs</p>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <div id="doc-verdict-container" class="inline-flex items-center gap-2 px-5 py-2 rounded-full border text-sm font-bold shadow-sm">
-                                <span id="doc-verdict-icon"></span>
-                                <span id="doc-verdict-text">Human-Written</span>
-                            </div>
-                            <button onclick="copyDocTextToEditor()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Copy text into main editor">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                                Copy to Editor
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Scale Bar -->
-                    <div class="space-y-2 bg-slate-950 p-4 rounded-xl border border-slate-800">
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="font-medium text-emerald-400">0% Human</span>
-                            <span class="text-slate-400 font-mono text-[11px]">Threshold 50%</span>
-                            <span class="font-medium text-rose-400">100% AI</span>
-                        </div>
-                        <div class="relative w-full h-4 rounded-full gradient-scale-bar p-0.5">
-                            <div id="doc-scale-indicator" class="absolute top-[-4px] -ml-2 w-4 h-6 bg-white rounded-md shadow-lg border-2 border-slate-900 transform transition-all duration-500 ease-out" style="left: 50%;"></div>
-                        </div>
-                        <div class="flex justify-between items-center pt-1 text-xs">
-                            <span class="text-slate-400">Overall AI Content Share:</span>
-                            <span id="doc-scale-value" class="font-mono font-bold text-slate-200">50.00%</span>
-                        </div>
-                    </div>
-
-                    <!-- Summary Stats Cards -->
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                            <span class="text-xs text-rose-400 block mb-1">AI Paragraphs</span>
-                            <div class="flex items-baseline gap-2">
-                                <span id="doc-ai-paras" class="text-2xl font-bold font-mono text-rose-400">0</span>
-                                <span id="doc-ai-pct" class="text-xs text-rose-500 font-mono">(0%)</span>
-                            </div>
-                        </div>
-                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                            <span class="text-xs text-emerald-400 block mb-1">Human Paragraphs</span>
-                            <div class="flex items-baseline gap-2">
-                                <span id="doc-human-paras" class="text-2xl font-bold font-mono text-emerald-400">0</span>
-                                <span id="doc-human-pct" class="text-xs text-emerald-500 font-mono">(0%)</span>
-                            </div>
-                        </div>
-                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                            <span class="text-xs text-slate-400 block mb-1">Active Model</span>
-                            <span id="doc-model-metric" class="text-sm font-semibold font-mono text-slate-200 truncate block">RuBERT-AI</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Paragraphs Breakdown ("Heatmap") -->
-                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div>
-                            <h3 class="text-sm font-semibold text-white">Paragraph-by-Paragraph Breakdown:</h3>
-                            <p class="text-xs text-slate-400">Color-coded probability heatmaps across sections</p>
-                        </div>
-                        <!-- Filters -->
-                        <div class="flex gap-2">
-                            <button id="doc-filter-all" onclick="filterDocParagraphs('all')" class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white font-medium transition">
-                                All (<span id="count-filter-all">0</span>)
-                            </button>
-                            <button id="doc-filter-ai" onclick="filterDocParagraphs('ai')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition">
-                                AI Only (<span id="count-filter-ai">0</span>)
-                            </button>
-                            <button id="doc-filter-human" onclick="filterDocParagraphs('human')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition">
-                                Human Only (<span id="count-filter-human">0</span>)
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Paragraph Cards Container -->
-                    <div id="doc-paragraphs-list" class="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-                    </div>
-                </div>
+            <div class="text-xs text-slate-500 hidden sm:block">
+                Evaluates whole-text macro attention + isolated paragraph probabilities
             </div>
         </div>
 
-        <!-- TAB 3: BATCH CSV / TSV ANALYSIS -->
-        <div id="tab-batch" class="hidden space-y-6">
-            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-6">
+        <!-- ======================================================== -->
+        <!-- VIEW 1: UNIFIED HYBRID TEXT & DOCUMENT INSPECTOR         -->
+        <!-- ======================================================== -->
+        <div id="view-unified" class="space-y-8">
+
+            <!-- Unified Input Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+                
+                <!-- Card Header with Samples -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-base font-semibold text-white flex items-center gap-2">
+                            <span>Input Text or Upload Document</span>
+                            <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-normal">PDF, DOCX, TXT, MD</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Type, paste raw text, or attach a file below</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="text-xs text-slate-500 mr-1">Quick Samples:</span>
+                        <button type="button" onclick="loadSample('ru_ai')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                            AI (RU)
+                        </button>
+                        <button type="button" onclick="loadSample('ru_human')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                            Human (RU)
+                        </button>
+                        <button type="button" onclick="loadSample('en_ai')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                            AI (EN)
+                        </button>
+                        <button type="button" onclick="loadSample('us_constitution')" class="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300/90 border border-amber-500/20 px-2.5 py-1 rounded transition" title="US Constitution Benchmark (Formal Historical Legal English)">
+                            US Constitution
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Textarea for Direct Input -->
+                <div class="relative">
+                    <textarea id="text-input" rows="7" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm leading-relaxed transition resize-y font-normal" placeholder="Paste any text in Russian or English here, or drop a document file below..."></textarea>
+                    
+                    <div class="flex items-center justify-between text-xs text-slate-400 mt-2 font-mono">
+                        <span id="char-word-count">Characters: 0 | Words: 0</span>
+                        <button type="button" onclick="clearUnifiedInput()" class="text-slate-400 hover:text-slate-200 transition">Clear All</button>
+                    </div>
+                </div>
+
+                <!-- File Dropzone Attachment Area -->
+                <div class="space-y-2">
+                    <div id="unified-dropzone" onclick="document.getElementById('unified-file-input').click()" class="border-2 border-dashed border-slate-800 hover:border-blue-500/60 bg-slate-950/40 hover:bg-slate-950/70 rounded-xl p-5 text-center cursor-pointer transition flex flex-col sm:flex-row items-center justify-center gap-3">
+                        <input type="file" id="unified-file-input" accept=".md,.markdown,.docx,.pdf,.txt" class="hidden" onchange="handleUnifiedFileSelected(event)">
+                        <div class="w-10 h-10 rounded-lg bg-blue-600/10 text-blue-400 flex items-center justify-center shrink-0">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                        </div>
+                        <div class="text-center sm:text-left">
+                            <span id="dropzone-label" class="text-sm font-medium text-slate-300 block">Or drag & drop / click to attach a document (.pdf, .docx, .md, .txt)</span>
+                            <span id="dropzone-sublabel" class="text-xs text-slate-500 block">Automatic multi-format extraction and paragraph segmentation</span>
+                        </div>
+                    </div>
+
+                    <!-- Selected File Banner (Shown when a file is attached) -->
+                    <div id="selected-file-badge" class="hidden flex items-center justify-between bg-blue-950/30 border border-blue-500/30 rounded-lg px-4 py-2.5 text-xs">
+                        <div class="flex items-center gap-2 text-blue-300">
+                            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <span id="selected-file-name" class="font-medium text-white">document.pdf</span>
+                            <span id="selected-file-size" class="text-slate-400 font-mono">(0 KB)</span>
+                        </div>
+                        <button type="button" onclick="clearSelectedFile()" class="text-slate-400 hover:text-rose-400 transition" title="Remove attached file">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Bottom Controls: Model Selector + CTA -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-4 border-t border-slate-800">
+                    <div class="sm:w-80">
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Inference Model:</label>
+                        <select id="model-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
+                            <option value="auto" selected>Auto: Smart Language Detector (RU ↔ EN)</option>
+                            <option value="ru">Russian: RuBERT-AI (GPT-4o, DeepSeek, GigaChat, YandexGPT)</option>
+                            <option value="en">English: DeBERTa-v3 (ChatGPT, Claude 3.5, Gemini, Llama 3)</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <button id="btn-run-analysis" onclick="submitHybridAnalysis()" class="flex-1 sm:flex-initial py-3 px-8 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold rounded-xl text-sm transition shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                            <span id="btn-run-label">Run Hybrid Analysis</span>
+                        </button>
+                        <button id="btn-abort-analysis" onclick="abortUnifiedAnalysis()" class="hidden px-4 py-3 bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-400 border border-rose-500/30 hover:border-rose-500/50 rounded-xl text-sm font-medium transition flex items-center gap-1.5" title="Abort in-flight inference">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                            <span>Cancel</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Empty State Placeholder -->
+            <div id="unified-empty-state" class="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center min-h-[260px]">
+                <div class="w-14 h-14 rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400 mb-3">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                </div>
+                <h3 class="text-sm font-medium text-slate-300">Awaiting Input</h3>
+                <p class="text-xs text-slate-500 max-w-sm mt-1">Paste text above or attach a document and click "Run Hybrid Analysis" to inspect authenticity.</p>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- RESULTS DASHBOARD (DUAL SCORE + HEATMAP BREAKDOWN)       -->
+            <!-- ======================================================== -->
+            <div id="unified-results-card" class="hidden space-y-6">
+
+                <!-- 1. Top Verdict Banner -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800">
+                        <div>
+                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold block">Authentication Verdict</span>
+                            <div id="main-verdict-container" class="mt-2 inline-flex items-center gap-2.5 px-6 py-2 rounded-full border text-base font-bold shadow-sm">
+                                <span id="main-verdict-icon"></span>
+                                <span id="main-verdict-text">Human-Written (Human)</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
+                            <span id="active-model-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300">Model: RuBERT-AI</span>
+                            <span id="active-device-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-emerald-400">Device: MPS</span>
+                        </div>
+                    </div>
+
+                    <!-- 2. Dual Score Meters: Monolithic vs Paragraph-Weighted -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-5">
+                        
+                        <!-- METER 1: Monolithic Continuous Text Score -->
+                        <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-200">Overall Text AI Probability</h3>
+                                    <p class="text-[11px] text-slate-400">Macro continuous attention across full text</p>
+                                </div>
+                                <span id="meter-monolithic-val" class="text-2xl font-black font-mono text-slate-100">0.00%</span>
+                            </div>
+
+                            <div class="relative w-full h-3 rounded-full gradient-scale-bar p-0.5">
+                                <div id="meter-monolithic-indicator" class="absolute top-[-3px] -ml-2 w-3.5 h-4.5 bg-white rounded shadow-md border-2 border-slate-900 transform transition-all duration-500 ease-out" style="left: 50%;"></div>
+                            </div>
+
+                            <div class="flex justify-between items-center text-[11px] text-slate-400 font-mono">
+                                <span>0% Human</span>
+                                <span class="text-slate-500">Threshold 50%</span>
+                                <span>100% AI</span>
+                            </div>
+                        </div>
+
+                        <!-- METER 2: Paragraph-Weighted Score -->
+                        <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-200">Paragraph-Weighted AI Score</h3>
+                                    <p class="text-[11px] text-slate-400">Word-weighted average across all paragraphs</p>
+                                </div>
+                                <span id="meter-paragraph-val" class="text-2xl font-black font-mono text-slate-100">0.00%</span>
+                            </div>
+
+                            <div class="relative w-full h-3 rounded-full gradient-scale-bar p-0.5">
+                                <div id="meter-paragraph-indicator" class="absolute top-[-3px] -ml-2 w-3.5 h-4.5 bg-white rounded shadow-md border-2 border-slate-900 transform transition-all duration-500 ease-out" style="left: 50%;"></div>
+                            </div>
+
+                            <div class="flex justify-between items-center text-[11px] text-slate-400 font-mono">
+                                <span>0% Human</span>
+                                <span class="text-slate-500">Threshold 50%</span>
+                                <span>100% AI</span>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- 3. Overall Statistics Row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 text-xs font-mono">
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 block text-[11px]">Word / Char Count</span>
+                            <span id="stat-words-chars" class="text-slate-200 font-semibold text-sm">0 / 0</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 block text-[11px]">Total Paragraphs</span>
+                            <span id="stat-total-paras" class="text-slate-200 font-semibold text-sm">0</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-rose-400 block text-[11px]">AI Paragraphs</span>
+                            <span id="stat-ai-paras" class="text-rose-400 font-semibold text-sm">0 (0%)</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-emerald-400 block text-[11px]">Human Paragraphs</span>
+                            <span id="stat-human-paras" class="text-emerald-400 font-semibold text-sm">0 (0%)</span>
+                        </div>
+                    </div>
+
+                    <!-- 4. Stylistic Markers & Clichés (if any) -->
+                    <div id="markers-box" class="hidden mt-5 pt-4 border-t border-slate-800 space-y-2">
+                        <span class="text-xs font-semibold text-slate-300 block">Detected Synthetic / RLHF Markers:</span>
+                        <div id="markers-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1"></div>
+                    </div>
+
+                </div>
+
+                <!-- ======================================================== -->
+                <!-- PARAGRAPH BREAKDOWN & SORTING SECTION                    -->
+                <!-- ======================================================== -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    
+                    <!-- Header with Filters & Sorting Controls -->
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                        <div>
+                            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                                <span>Paragraph-by-Paragraph Statistics</span>
+                                <span id="paras-count-badge" class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 text-xs font-mono font-normal">0 sections</span>
+                            </h3>
+                            <p class="text-xs text-slate-400">Examine isolated paragraph probabilities with interactive sorting</p>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-3">
+                            <!-- Filter Pills -->
+                            <div class="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+                                <button id="filter-btn-all" onclick="setParagraphFilter('all')" class="px-3 py-1 rounded bg-blue-600 text-white font-medium transition">
+                                    All (<span id="filter-count-all">0</span>)
+                                </button>
+                                <button id="filter-btn-ai" onclick="setParagraphFilter('ai')" class="px-3 py-1 rounded text-slate-400 hover:text-white transition">
+                                    AI Only (<span id="filter-count-ai">0</span>)
+                                </button>
+                                <button id="filter-btn-human" onclick="setParagraphFilter('human')" class="px-3 py-1 rounded text-slate-400 hover:text-white transition">
+                                    Human Only (<span id="filter-count-human">0</span>)
+                                </button>
+                            </div>
+
+                            <!-- Sorting Dropdown -->
+                            <div class="flex items-center gap-2 text-xs">
+                                <label for="sort-select" class="text-slate-400 font-medium whitespace-nowrap">Sort by:</label>
+                                <select id="sort-select" onchange="changeParagraphSort(this.value)" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
+                                    <option value="original" selected>📄 Original Text Order (#1, #2...)</option>
+                                    <option value="desc">🔻 Highest AI % First (Спадание)</option>
+                                    <option value="asc">🔺 Lowest AI % First (Возрастание)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Paragraph Cards List Container -->
+                    <div id="paragraphs-container" class="space-y-3 max-h-[650px] overflow-y-auto pr-2">
+                        <!-- Dynamically populated via JS -->
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- VIEW 2: BATCH DATASETS (CSV / TSV)                       -->
+        <!-- ======================================================== -->
+        <div id="view-batch" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
                 <!-- Dropzone -->
                 <div id="file-dropzone" onclick="document.getElementById('file-input').click()" class="border-2 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/60 rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center">
                     <input type="file" id="file-input" accept=".csv,.tsv" class="hidden" onchange="handleFileSelected(event)">
@@ -327,8 +357,8 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                         </svg>
                     </div>
-                    <span id="dropzone-text" class="text-sm font-medium text-slate-200">Click to select a .csv / .tsv file or drag and drop it here</span>
-                    <span id="dropzone-subtext" class="text-xs text-slate-500 mt-1">Supports datasets of any size (up to 250 MB)</span>
+                    <span id="batch-dropzone-text" class="text-sm font-medium text-slate-200">Click to select a .csv / .tsv file or drag and drop it here</span>
+                    <span class="text-xs text-slate-500 mt-1">Supports datasets of any size (up to 250 MB)</span>
                 </div>
 
                 <!-- Batch configuration -->
@@ -351,15 +381,22 @@
                     </div>
                 </div>
 
-                <!-- Run batch button -->
-                <button id="btn-run-batch" onclick="submitBatchAnalysis()" disabled class="w-full py-3 px-4 bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-500 text-white font-medium rounded-lg text-sm transition shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2">
-                    <span id="btn-run-batch-label">Select a file to process</span>
-                </button>
+                <!-- Run & Abort batch buttons -->
+                <div class="flex items-center gap-3">
+                    <button id="btn-run-batch" onclick="submitBatchAnalysis()" disabled class="flex-1 py-3 px-4 bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-500 text-white font-medium rounded-lg text-sm transition shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2">
+                        <span id="btn-run-batch-label">Select a file to process</span>
+                    </button>
+                    <button id="btn-abort-batch" onclick="abortAnalysis('batch')" class="hidden px-4 py-3 bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-400 border border-rose-500/30 hover:border-rose-500/50 rounded-lg text-sm font-medium transition flex items-center gap-1.5 shadow-sm" title="Cancel batch scoring">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                        <span>Cancel</span>
+                    </button>
+                </div>
             </div>
 
             <!-- Batch Results Section -->
             <div id="batch-results-container" class="hidden space-y-6">
-                <!-- Summary cards -->
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
                         <span class="text-xs text-slate-400 block mb-1">Total Rows</span>
@@ -389,7 +426,6 @@
                     </div>
                 </div>
 
-                <!-- Preview table -->
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
                     <span class="text-xs font-semibold text-slate-300 block">Dataset Preview (First 25 Rows):</span>
                     <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-800 rounded-lg">
@@ -404,9 +440,12 @@
 
     </main>
 
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
     <!-- Footer -->
     <footer class="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
-        VeriText AI Detector powered by RuBERT-AI & DeBERTa-v3 | Bilingual Russian & English Support
+        VeriText AI Detector powered by RuBERT-AI & DeBERTa-v3 | Hybrid Macro + Paragraph Evaluation
     </footer>
 
     <script src="js/app.js"></script>
