@@ -1,0 +1,11 @@
+# NVIDIA GPU acceleration overlay (Linux / Windows WSL2)
+# Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
+services:
+  api:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

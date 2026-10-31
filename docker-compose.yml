@@ -1,0 +1,45 @@
+services:
+  # 1. Isolated inference backend service (FastAPI)
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+      args:
+        PRELOAD_MODELS: "true"
+        HF_TOKEN: ${HF_TOKEN:-}
+    image: veritext-api:latest
+    command: ["uvicorn", "backend.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - PYTHONPATH=/app
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - ./backend:/app/backend:ro
+    networks:
+      - internal-net
+
+  # 2. Web UI and reverse proxy (Nginx)
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    image: veritext-web:latest
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web/public:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+    networks:
+      - internal-net
+
+volumes:
+  hf_cache:
+
+networks:
+  internal-net:
+    driver: bridge

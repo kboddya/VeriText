@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VeriText — Modern AI Text & Document Detector</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased">
+
+    <!-- Top Navigation Header -->
+    <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-semibold tracking-tight text-white flex items-center gap-2">
+                        VeriText
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">v1.0</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">RuBERT-AI (GPT-4o, DeepSeek, GigaChat) + DeBERTa-v3 (ChatGPT, Claude 3.5)</p>
+                </div>
+            </div>
+
+            <!-- Compute Device Status Badge -->
+            <div id="system-status-container" class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-full border border-slate-700 text-xs">
+                <span class="relative flex h-2 w-2">
+                    <span id="status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span id="status-dot" class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span id="device-label" class="text-slate-300 font-mono">Connecting to backend...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Navigation Tabs -->
+        <div class="flex space-x-2 border-b border-slate-800 mb-8 overflow-x-auto">
+            <button id="tab-btn-text" onclick="switchTab('text')" class="flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm transition-all border-blue-500 text-blue-400 bg-slate-900/40 rounded-t-lg whitespace-nowrap">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Direct Text Analysis
+            </button>
+            <button id="tab-btn-doc" onclick="switchTab('doc')" class="flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm transition-all border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/20 rounded-t-lg whitespace-nowrap">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                </svg>
+                Documents (MD, DOCX, PDF)
+            </button>
+            <button id="tab-btn-batch" onclick="switchTab('batch')" class="flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm transition-all border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/20 rounded-t-lg whitespace-nowrap">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                Batch Datasets (CSV / TSV)
+            </button>
+        </div>
+
+        <!-- TAB 1: DIRECT TEXT ANALYSIS -->
+        <div id="tab-text" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <!-- Left: Input form -->
+                <div class="lg:col-span-7 space-y-4">
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
+                        <div class="flex items-center justify-between mb-3">
+                            <label for="text-input" class="text-sm font-semibold text-slate-200">
+                                Paste text to analyze:
+                            </label>
+                            <div class="flex gap-2">
+                                <button type="button" onclick="loadSample('ru_ai')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                                    Sample: AI (RU)
+                                </button>
+                                <button type="button" onclick="loadSample('ru_human')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                                    Sample: Human (RU)
+                                </button>
+                                <button type="button" onclick="loadSample('en_ai')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                                    Sample: AI (EN)
+                                </button>
+                            </div>
+                        </div>
+
+                        <textarea id="text-input" rows="8" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm leading-relaxed transition resize-y font-normal" placeholder="Paste any text in Russian or English here to check for AI generation..."></textarea>
+
+                        <div class="flex items-center justify-between text-xs text-slate-400 mt-2 font-mono">
+                            <span id="char-word-count">Characters: 0 | Words: 0</span>
+                            <button type="button" onclick="clearText()" class="hover:text-slate-200 transition">Clear</button>
+                        </div>
+
+                        <!-- Settings -->
+                        <div class="mt-5 pt-4 border-t border-slate-800">
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Detection Model:</label>
+                            <select id="mode-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
+                                <option value="auto" selected>Auto: Automatic Language Detection (Russian ↔ English)</option>
+                                <option value="ru">Russian: RuBERT-AI (GPT-4o, DeepSeek, GigaChat, YandexGPT)</option>
+                                <option value="en">English: DeBERTa-v3 (ChatGPT, Claude 3.5, Gemini, Llama 3)</option>
+                            </select>
+                        </div>
+
+                        <!-- Submit button -->
+                        <div class="mt-5">
+                            <button id="btn-submit-text" onclick="submitTextAnalysis()" class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium rounded-lg text-sm transition shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                                </svg>
+                                <span id="btn-submit-text-label">Analyze Text</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Analysis Results -->
+                <div class="lg:col-span-5">
+                    <div id="results-empty-state" class="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center flex flex-col items-center justify-center min-h-[350px]">
+                        <div class="w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400 mb-3">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-sm font-medium text-slate-300">Results will appear here</h3>
+                        <p class="text-xs text-slate-500 max-w-xs mt-1">Paste text on the left and click "Analyze Text" to run transformer inference.</p>
+                    </div>
+
+                    <div id="results-card" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-6">
+                        <!-- Main verdict badge -->
+                        <div class="text-center">
+                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Model Verdict</span>
+                            <div id="verdict-container" class="mt-2 inline-flex items-center gap-2 px-6 py-2.5 rounded-full border text-base font-bold shadow-sm">
+                                <span id="verdict-icon"></span>
+                                <span id="verdict-text">Human-Written</span>
+                            </div>
+                            <span id="active-model-badge" class="block text-[11px] text-slate-400 mt-2 font-mono">Model: RuBERT</span>
+                        </div>
+
+                        <!-- Scale Bar: 0% Human -> 100% AI -->
+                        <div class="space-y-2 bg-slate-950 p-4 rounded-xl border border-slate-800">
+                            <div class="flex justify-between items-center text-xs">
+                                <span class="font-medium text-emerald-400">0% Human</span>
+                                <span class="text-slate-400 font-mono text-[11px]">Threshold 50%</span>
+                                <span class="font-medium text-rose-400">100% AI</span>
+                            </div>
+
+                            <div class="relative w-full h-4 rounded-full gradient-scale-bar p-0.5">
+                                <div id="scale-indicator" class="absolute top-[-4px] -ml-2 w-4 h-6 bg-white rounded-md shadow-lg border-2 border-slate-900 transform transition-all duration-500 ease-out" style="left: 50%;"></div>
+                            </div>
+
+                            <div class="flex justify-between items-center pt-1 text-xs">
+                                <span class="text-slate-400">AI Generation Probability:</span>
+                                <span id="scale-value" class="font-mono font-bold text-slate-200">50.00%</span>
+                            </div>
+                        </div>
+
+                        <!-- Stats grid -->
+                        <div class="grid grid-cols-2 gap-3 text-xs">
+                            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                <span class="text-slate-400 block mb-0.5">Logit Score</span>
+                                <span id="metric-score" class="font-mono font-semibold text-slate-200 text-sm">0.000</span>
+                            </div>
+                            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                <span class="text-slate-400 block mb-0.5">Compute Device</span>
+                                <span id="metric-device" class="font-mono font-semibold text-emerald-400 text-sm uppercase">Auto</span>
+                            </div>
+                        </div>
+
+                        <!-- Stylistic Markers -->
+                        <div id="markers-container" class="hidden space-y-2 pt-2 border-t border-slate-800">
+                            <span class="text-xs font-semibold text-slate-300 block">Detected AI Stylistic Markers & Clichés:</span>
+                            <div id="markers-list" class="space-y-1.5 max-h-48 overflow-y-auto pr-1"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: DOCUMENT ANALYSIS (MD, DOCX, PDF) -->
+        <div id="tab-doc" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-6">
+                <!-- Dropzone for documents -->
+                <div id="doc-dropzone" onclick="document.getElementById('doc-file-input').click()" class="border-2 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/60 rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center">
+                    <input type="file" id="doc-file-input" accept=".md,.markdown,.docx,.pdf,.txt" class="hidden" onchange="handleDocFileSelected(event)">
+                    <div class="w-14 h-14 rounded-full bg-indigo-600/10 text-indigo-400 flex items-center justify-center mb-3">
+                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <span id="doc-dropzone-text" class="text-sm font-medium text-slate-200">Drag and drop a PDF, DOCX, MD, or TXT document here</span>
+                    <span id="doc-dropzone-subtext" class="text-xs text-slate-500 mt-1">Supported formats: .pdf, .docx, .md, .txt (essays, articles, papers, reports)</span>
+                </div>
+
+                <!-- Document controls -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Classification Model:</label>
+                    <select id="doc-mode-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
+                        <option value="auto" selected>Auto: Automatic Document Language Detection</option>
+                        <option value="ru">Russian: RuBERT-AI (GPT-4o, DeepSeek, GigaChat)</option>
+                        <option value="en">English: DeBERTa-v3 (ChatGPT, Claude 3.5, Gemini)</option>
+                    </select>
+                </div>
+
+                <!-- Run button -->
+                <button id="btn-run-doc" onclick="submitDocAnalysis()" disabled class="w-full py-3 px-4 bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-500 text-white font-medium rounded-lg text-sm transition shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2">
+                    <span id="btn-run-doc-label">Select a document to inspect</span>
+                </button>
+            </div>
+
+            <!-- Document Results Section -->
+            <div id="doc-results-container" class="hidden space-y-6">
+                <!-- Document Header & Verdict -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                        <div>
+                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Document Inspection</span>
+                            <h2 id="doc-result-filename" class="text-xl font-bold text-white mt-1">filename.pdf</h2>
+                            <p id="doc-result-stats" class="text-xs text-slate-400 mt-1">0 words | 0 characters | 0 paragraphs</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div id="doc-verdict-container" class="inline-flex items-center gap-2 px-5 py-2 rounded-full border text-sm font-bold shadow-sm">
+                                <span id="doc-verdict-icon"></span>
+                                <span id="doc-verdict-text">Human-Written</span>
+                            </div>
+                            <button onclick="copyDocTextToEditor()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="Copy text into main editor">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                Copy to Editor
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Scale Bar -->
+                    <div class="space-y-2 bg-slate-950 p-4 rounded-xl border border-slate-800">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="font-medium text-emerald-400">0% Human</span>
+                            <span class="text-slate-400 font-mono text-[11px]">Threshold 50%</span>
+                            <span class="font-medium text-rose-400">100% AI</span>
+                        </div>
+                        <div class="relative w-full h-4 rounded-full gradient-scale-bar p-0.5">
+                            <div id="doc-scale-indicator" class="absolute top-[-4px] -ml-2 w-4 h-6 bg-white rounded-md shadow-lg border-2 border-slate-900 transform transition-all duration-500 ease-out" style="left: 50%;"></div>
+                        </div>
+                        <div class="flex justify-between items-center pt-1 text-xs">
+                            <span class="text-slate-400">Overall AI Content Share:</span>
+                            <span id="doc-scale-value" class="font-mono font-bold text-slate-200">50.00%</span>
+                        </div>
+                    </div>
+
+                    <!-- Summary Stats Cards -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                            <span class="text-xs text-rose-400 block mb-1">AI Paragraphs</span>
+                            <div class="flex items-baseline gap-2">
+                                <span id="doc-ai-paras" class="text-2xl font-bold font-mono text-rose-400">0</span>
+                                <span id="doc-ai-pct" class="text-xs text-rose-500 font-mono">(0%)</span>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                            <span class="text-xs text-emerald-400 block mb-1">Human Paragraphs</span>
+                            <div class="flex items-baseline gap-2">
+                                <span id="doc-human-paras" class="text-2xl font-bold font-mono text-emerald-400">0</span>
+                                <span id="doc-human-pct" class="text-xs text-emerald-500 font-mono">(0%)</span>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                            <span class="text-xs text-slate-400 block mb-1">Active Model</span>
+                            <span id="doc-model-metric" class="text-sm font-semibold font-mono text-slate-200 truncate block">RuBERT-AI</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Paragraphs Breakdown ("Heatmap") -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-sm font-semibold text-white">Paragraph-by-Paragraph Breakdown:</h3>
+                            <p class="text-xs text-slate-400">Color-coded probability heatmaps across sections</p>
+                        </div>
+                        <!-- Filters -->
+                        <div class="flex gap-2">
+                            <button id="doc-filter-all" onclick="filterDocParagraphs('all')" class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white font-medium transition">
+                                All (<span id="count-filter-all">0</span>)
+                            </button>
+                            <button id="doc-filter-ai" onclick="filterDocParagraphs('ai')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition">
+                                AI Only (<span id="count-filter-ai">0</span>)
+                            </button>
+                            <button id="doc-filter-human" onclick="filterDocParagraphs('human')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition">
+                                Human Only (<span id="count-filter-human">0</span>)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Paragraph Cards Container -->
+                    <div id="doc-paragraphs-list" class="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: BATCH CSV / TSV ANALYSIS -->
+        <div id="tab-batch" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-6">
+                <!-- Dropzone -->
+                <div id="file-dropzone" onclick="document.getElementById('file-input').click()" class="border-2 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/60 rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center">
+                    <input type="file" id="file-input" accept=".csv,.tsv" class="hidden" onchange="handleFileSelected(event)">
+                    <div class="w-12 h-12 rounded-full bg-blue-600/10 text-blue-400 flex items-center justify-center mb-3">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <span id="dropzone-text" class="text-sm font-medium text-slate-200">Click to select a .csv / .tsv file or drag and drop it here</span>
+                    <span id="dropzone-subtext" class="text-xs text-slate-500 mt-1">Supports datasets of any size (up to 250 MB)</span>
+                </div>
+
+                <!-- Batch configuration -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Target Text Column:</label>
+                        <input type="text" id="batch-text-column" placeholder="Leave empty for auto-detection" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Model Selection:</label>
+                        <select id="batch-mode-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
+                            <option value="auto" selected>Auto (Language-based)</option>
+                            <option value="ru">Russian (RuBERT)</option>
+                            <option value="en">English (DeBERTa-v3)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Batch Size:</label>
+                        <input type="number" id="batch-size-input" value="32" min="1" max="128" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
+                    </div>
+                </div>
+
+                <!-- Run batch button -->
+                <button id="btn-run-batch" onclick="submitBatchAnalysis()" disabled class="w-full py-3 px-4 bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-500 text-white font-medium rounded-lg text-sm transition shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2">
+                    <span id="btn-run-batch-label">Select a file to process</span>
+                </button>
+            </div>
+
+            <!-- Batch Results Section -->
+            <div id="batch-results-container" class="hidden space-y-6">
+                <!-- Summary cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                        <span class="text-xs text-slate-400 block mb-1">Total Rows</span>
+                        <span id="batch-total-rows" class="text-2xl font-bold font-mono text-slate-100">0</span>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                        <span class="text-xs text-rose-400 block mb-1">AI-Generated</span>
+                        <div class="flex items-baseline gap-2">
+                            <span id="batch-ai-count" class="text-2xl font-bold font-mono text-rose-400">0</span>
+                            <span id="batch-ai-pct" class="text-xs text-rose-500 font-mono">(0%)</span>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                        <span class="text-xs text-emerald-400 block mb-1">Human-Written</span>
+                        <div class="flex items-baseline gap-2">
+                            <span id="batch-human-count" class="text-2xl font-bold font-mono text-emerald-400">0</span>
+                            <span id="batch-human-pct" class="text-xs text-emerald-500 font-mono">(0%)</span>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-center">
+                        <button id="btn-download-csv" onclick="downloadScoredCSV()" class="w-full h-full py-2 px-4 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            Download Scored CSV
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Preview table -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+                    <span class="text-xs font-semibold text-slate-300 block">Dataset Preview (First 25 Rows):</span>
+                    <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-800 rounded-lg">
+                        <table class="w-full text-left text-xs divide-y divide-slate-800">
+                            <thead id="batch-table-head" class="bg-slate-950 text-slate-400 sticky top-0 font-medium"></thead>
+                            <tbody id="batch-table-body" class="divide-y divide-slate-800 text-slate-300 font-mono"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
+        VeriText AI Detector powered by RuBERT-AI & DeBERTa-v3 | Bilingual Russian & English Support
+    </footer>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

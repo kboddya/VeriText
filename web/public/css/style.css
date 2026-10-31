@@ -1,0 +1,35 @@
+/* Custom styling and animations for Fast AI Detector */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+code, pre, .font-mono {
+    font-family: 'JetBrains+Mono', monospace;
+}
+
+.gradient-scale-bar {
+    background: linear-gradient(90deg, #10b981 0%, #10b981 35%, #f59e0b 50%, #ef4444 65%, #ef4444 100%);
+}
+
+.dropzone-active {
+    border-color: #3b82f6 !important;
+    background-color: rgba(59, 130, 246, 0.05) !important;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
