@@ -4,6 +4,7 @@ let selectedUnifiedFile = null;
 let lastUnifiedResult = null;
 let currentParagraphFilter = 'all'; // 'all', 'ai', 'human'
 let currentParagraphSort = 'original'; // 'original', 'desc', 'asc'
+let currentSourceMode = 'text'; // 'text' or 'file'
 
 let selectedBatchFile = null;
 let lastBatchResult = null;
@@ -142,11 +143,45 @@ function initTextareaCounter() {
 }
 
 function loadSample(type) {
+    setAnalysisSourceMode('text');
     clearSelectedFile();
     const textarea = document.getElementById('text-input');
     textarea.value = SAMPLES[type] || '';
     textarea.dispatchEvent(new Event('input'));
     showToast(`Loaded sample: ${type.toUpperCase()}`, 'info');
+}
+
+function setAnalysisSourceMode(mode) {
+    currentSourceMode = mode;
+    const btnText = document.getElementById('mode-btn-text');
+    const btnFile = document.getElementById('mode-btn-file');
+    const panelText = document.getElementById('input-panel-text');
+    const panelFile = document.getElementById('input-panel-file');
+    const samplesContainer = document.getElementById('quick-samples-container');
+    const btnRunLabel = document.getElementById('btn-run-label');
+
+    const activeClass = "flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold transition shadow-sm";
+    const inactiveClass = "flex items-center gap-2 px-4 py-2 rounded-lg text-slate-400 hover:text-white transition";
+
+    if (mode === 'text') {
+        if (btnText) btnText.className = activeClass;
+        if (btnFile) btnFile.className = inactiveClass;
+        if (panelText) panelText.classList.remove('hidden');
+        if (panelFile) panelFile.classList.add('hidden');
+        if (samplesContainer) samplesContainer.classList.remove('hidden');
+        if (btnRunLabel) btnRunLabel.textContent = 'Run Hybrid Analysis (Text)';
+    } else {
+        if (btnText) btnText.className = inactiveClass;
+        if (btnFile) btnFile.className = activeClass;
+        if (panelText) panelText.classList.add('hidden');
+        if (panelFile) panelFile.classList.remove('hidden');
+        if (samplesContainer) samplesContainer.classList.add('hidden');
+        if (btnRunLabel) {
+            btnRunLabel.textContent = selectedUnifiedFile 
+                ? `Run Hybrid Analysis (${selectedUnifiedFile.name})`
+                : 'Select a Document to Analyze';
+        }
+    }
 }
 
 function clearUnifiedInput() {
@@ -205,14 +240,20 @@ function handleSelectedUnifiedFile(file) {
     const badge = document.getElementById('selected-file-badge');
     const fileNameEl = document.getElementById('selected-file-name');
     const fileSizeEl = document.getElementById('selected-file-size');
+    const fileExtEl = document.getElementById('selected-file-ext');
     const dropzoneLabel = document.getElementById('dropzone-label');
+    const btnRunLabel = document.getElementById('btn-run-label');
 
     const sizeKb = (file.size / 1024).toFixed(1);
-    fileNameEl.textContent = file.name;
-    fileSizeEl.textContent = `(${sizeKb} KB)`;
-    badge.classList.remove('hidden');
+    const ext = file.name.split('.').pop().toUpperCase();
 
-    dropzoneLabel.textContent = `Attached file: ${file.name} (${sizeKb} KB)`;
+    if (fileExtEl) fileExtEl.textContent = ext;
+    if (fileNameEl) fileNameEl.textContent = file.name;
+    if (fileSizeEl) fileSizeEl.textContent = `${sizeKb} KB`;
+    if (badge) badge.classList.remove('hidden');
+
+    if (dropzoneLabel) dropzoneLabel.textContent = `Attached: ${file.name} (${sizeKb} KB)`;
+    if (btnRunLabel) btnRunLabel.textContent = `Run Hybrid Analysis (${file.name})`;
     showToast(`Attached document: ${file.name}`, 'info');
 }
 
@@ -221,20 +262,31 @@ function clearSelectedFile() {
     const badge = document.getElementById('selected-file-badge');
     const fileInput = document.getElementById('unified-file-input');
     const dropzoneLabel = document.getElementById('dropzone-label');
+    const btnRunLabel = document.getElementById('btn-run-label');
 
     if (badge) badge.classList.add('hidden');
     if (fileInput) fileInput.value = '';
-    if (dropzoneLabel) dropzoneLabel.textContent = 'Or drag & drop / click to attach a document (.pdf, .docx, .md, .txt)';
+    if (dropzoneLabel) dropzoneLabel.textContent = 'Click to select or drag and drop a document file here';
+    if (btnRunLabel) {
+        btnRunLabel.textContent = (currentSourceMode === 'file') ? 'Select a Document to Analyze' : 'Run Hybrid Analysis (Text)';
+    }
 }
 
 // ----------------------------------------------------
 // HYBRID ANALYSIS EXECUTION
 // ----------------------------------------------------
 async function submitHybridAnalysis() {
-    const textVal = document.getElementById('text-input').value.trim();
-    if (!selectedUnifiedFile && !textVal) {
-        alert('Please enter text to analyze or attach a document file.');
-        return;
+    if (currentSourceMode === 'file') {
+        if (!selectedUnifiedFile) {
+            alert('Please select or drag & drop a document file (.pdf, .docx, .md, .txt) first.');
+            return;
+        }
+    } else {
+        const textVal = document.getElementById('text-input').value.trim();
+        if (!textVal) {
+            alert('Please enter or paste text to analyze.');
+            return;
+        }
     }
 
     const mode = document.getElementById('model-select').value;
@@ -261,7 +313,7 @@ async function submitHybridAnalysis() {
     if (progressCard) {
         progressCard.classList.remove('hidden');
         stepBadge.textContent = 'Step 1/4';
-        progressMsg.textContent = selectedUnifiedFile ? `Extracting ${selectedUnifiedFile.name}...` : 'Preparing text input...';
+        progressMsg.textContent = (currentSourceMode === 'file') ? `Extracting ${selectedUnifiedFile.name}...` : 'Preparing text input...';
         progressPct.textContent = '10%';
         progressFill.style.width = '10%';
     }
@@ -284,7 +336,7 @@ async function submitHybridAnalysis() {
 
     try {
         let res;
-        if (selectedUnifiedFile) {
+        if (currentSourceMode === 'file') {
             // Upload file to document analysis endpoint
             const formData = new FormData();
             formData.append('file', selectedUnifiedFile);
@@ -299,6 +351,7 @@ async function submitHybridAnalysis() {
             });
         } else {
             // Send direct text
+            const textVal = document.getElementById('text-input').value.trim();
             res = await fetch('/api/score', {
                 method: 'POST',
                 headers: {
@@ -392,6 +445,17 @@ function renderUnifiedResults(data) {
 
     modelBadge.textContent = `Model: ${data.model_used || 'RuBERT-AI'}`;
     deviceBadge.textContent = `Device: ${(data.device || 'Auto').toUpperCase()}`;
+
+    const sourceBadge = document.getElementById('active-source-badge');
+    if (sourceBadge) {
+        if (data.filename || currentSourceMode === 'file') {
+            sourceBadge.textContent = `Source: File (${data.filename || (selectedUnifiedFile ? selectedUnifiedFile.name : 'Document')})`;
+            sourceBadge.className = "px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono";
+        } else {
+            sourceBadge.textContent = `Source: Direct Text`;
+            sourceBadge.className = "px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 font-mono";
+        }
+    }
 
     // Confidence & Risk Level Status
     const confBadge = document.getElementById('confidence-status-badge');

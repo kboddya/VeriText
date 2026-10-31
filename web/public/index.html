@@ -88,17 +88,26 @@
             <!-- Unified Input Card -->
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
                 
-                <!-- Card Header with Samples -->
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                        <h2 class="text-base font-semibold text-white flex items-center gap-2">
-                            <span>Input Text or Upload Document</span>
-                            <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-normal">PDF, DOCX, TXT, MD</span>
-                        </h2>
-                        <p class="text-xs text-slate-400 mt-0.5">Type, paste raw text, or attach a file below</p>
+                <!-- Input Mode Switcher (Text vs File) & Samples -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                    <div class="inline-flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium">
+                        <button id="mode-btn-text" type="button" onclick="setAnalysisSourceMode('text')" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold transition shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                            </svg>
+                            Direct Text Input
+                        </button>
+                        <button id="mode-btn-file" type="button" onclick="setAnalysisSourceMode('file')" class="flex items-center gap-2 px-4 py-2 rounded-lg text-slate-400 hover:text-white transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                            </svg>
+                            Document File Upload
+                        </button>
                     </div>
-                    <div class="flex flex-wrap items-center gap-1.5">
-                        <span class="text-xs text-slate-500 mr-1">Quick Samples:</span>
+
+                    <!-- Quick Samples (active in Text Mode) -->
+                    <div id="quick-samples-container" class="flex flex-wrap items-center gap-1.5">
+                        <span class="text-xs text-slate-500 mr-1 hidden sm:inline">Samples:</span>
                         <button type="button" onclick="loadSample('ru_ai')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
                             AI (RU)
                         </button>
@@ -114,42 +123,44 @@
                     </div>
                 </div>
 
-                <!-- Textarea for Direct Input -->
-                <div class="relative">
-                    <textarea id="text-input" rows="7" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm leading-relaxed transition resize-y font-normal" placeholder="Paste any text in Russian or English here, or drop a document file below..."></textarea>
-                    
-                    <div class="flex items-center justify-between text-xs text-slate-400 mt-2 font-mono">
-                        <span id="char-word-count">Characters: 0 | Words: 0</span>
-                        <button type="button" onclick="clearUnifiedInput()" class="text-slate-400 hover:text-slate-200 transition">Clear All</button>
+                <!-- PANEL 1: Direct Text Input Mode -->
+                <div id="input-panel-text" class="space-y-2">
+                    <div class="relative">
+                        <textarea id="text-input" rows="8" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm leading-relaxed transition resize-y font-normal" placeholder="Paste or type any Russian or English text here to run hybrid AI authentication..."></textarea>
+                        
+                        <div class="flex items-center justify-between text-xs text-slate-400 mt-2 font-mono">
+                            <span id="char-word-count">Characters: 0 | Words: 0</span>
+                            <button type="button" onclick="clearUnifiedInput()" class="text-slate-400 hover:text-slate-200 transition">Clear Text</button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- File Dropzone Attachment Area -->
-                <div class="space-y-2">
-                    <div id="unified-dropzone" onclick="document.getElementById('unified-file-input').click()" class="border-2 border-dashed border-slate-800 hover:border-blue-500/60 bg-slate-950/40 hover:bg-slate-950/70 rounded-xl p-5 text-center cursor-pointer transition flex flex-col sm:flex-row items-center justify-center gap-3">
+                <!-- PANEL 2: Document File Upload Mode -->
+                <div id="input-panel-file" class="hidden space-y-4">
+                    <div id="unified-dropzone" onclick="document.getElementById('unified-file-input').click()" class="border-2 border-dashed border-slate-800 hover:border-blue-500/60 bg-slate-950/60 hover:bg-slate-950/90 rounded-2xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-3">
                         <input type="file" id="unified-file-input" accept=".md,.markdown,.docx,.pdf,.txt" class="hidden" onchange="handleUnifiedFileSelected(event)">
-                        <div class="w-10 h-10 rounded-lg bg-blue-600/10 text-blue-400 flex items-center justify-center shrink-0">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="w-14 h-14 rounded-2xl bg-blue-600/10 text-blue-400 flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/10">
+                            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                             </svg>
                         </div>
-                        <div class="text-center sm:text-left">
-                            <span id="dropzone-label" class="text-sm font-medium text-slate-300 block">Or drag & drop / click to attach a document (.pdf, .docx, .md, .txt)</span>
-                            <span id="dropzone-sublabel" class="text-xs text-slate-500 block">Automatic multi-format extraction and paragraph segmentation</span>
+                        <div class="text-center">
+                            <span id="dropzone-label" class="text-sm font-semibold text-slate-200 block">Click to select or drag and drop a document file here</span>
+                            <span id="dropzone-sublabel" class="text-xs text-slate-400 block mt-1">Supported formats: <span class="text-blue-400 font-mono">.pdf, .docx, .md, .txt</span></span>
                         </div>
                     </div>
 
-                    <!-- Selected File Banner (Shown when a file is attached) -->
-                    <div id="selected-file-badge" class="hidden flex items-center justify-between bg-blue-950/30 border border-blue-500/30 rounded-lg px-4 py-2.5 text-xs">
-                        <div class="flex items-center gap-2 text-blue-300">
-                            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                            </svg>
-                            <span id="selected-file-name" class="font-medium text-white">document.pdf</span>
-                            <span id="selected-file-size" class="text-slate-400 font-mono">(0 KB)</span>
+                    <!-- Selected File Banner -->
+                    <div id="selected-file-badge" class="hidden flex items-center justify-between bg-blue-950/40 border border-blue-500/40 rounded-xl px-4 py-3 text-xs">
+                        <div class="flex items-center gap-3 text-blue-300">
+                            <span class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-mono font-bold text-[11px] uppercase" id="selected-file-ext">PDF</span>
+                            <div>
+                                <span id="selected-file-name" class="font-semibold text-white block">document.pdf</span>
+                                <span id="selected-file-size" class="text-slate-400 font-mono text-[11px]">0 KB</span>
+                            </div>
                         </div>
-                        <button type="button" onclick="clearSelectedFile()" class="text-slate-400 hover:text-rose-400 transition" title="Remove attached file">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <button type="button" onclick="clearSelectedFile()" class="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-900 transition" title="Remove attached file">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
                         </button>
@@ -236,6 +247,7 @@
                             <p id="confidence-status-desc" class="text-xs text-slate-400 mt-2 max-w-xl">High confidence human authorship with natural lexical variety and burstiness.</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
+                            <span id="active-source-badge" class="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300">Source: Direct Text</span>
                             <span id="active-model-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300">Model: RuBERT-AI</span>
                             <span id="active-device-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-emerald-400">Device: MPS</span>
                         </div>
