@@ -5,6 +5,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 from .cancellation import OperationCancelled
+from .cache import load_offline_first
 from .config import (
     detect_device,
     MODELS_CATALOG,
@@ -26,27 +27,47 @@ class ModernAIDetector:
         self._models: dict[str, object] = {}
         self._tokenizers: dict[str, object] = {}
 
-    def _load_model(self, model_key: str) -> tuple[object, object]:
+    def _load_model(
+        self,
+        model_key: str,
+        on_step: Optional[Callable[[str], None]] = None,
+    ) -> tuple[object, object]:
         cfg = MODELS_CATALOG.get(model_key, MODELS_CATALOG["ru"])
         model_id = cfg["id"]
 
         if model_id not in self._models:
-            try:
-                tokenizer = AutoTokenizer.from_pretrained(model_id)
-                model = AutoModelForSequenceClassification.from_pretrained(model_id)
-            except Exception as e:
-                if model_key == "en":
-                    tokenizer = AutoTokenizer.from_pretrained(FALLBACK_EN_MODEL_ID)
-                    model = AutoModelForSequenceClassification.from_pretrained(FALLBACK_EN_MODEL_ID)
-                    model_id = FALLBACK_EN_MODEL_ID
-                else:
-                    raise e
-            model.to(self.device)
-            model.eval()
+            fallback = FALLBACK_EN_MODEL_ID if model_key == "en" else None
+            model, tokenizer, effective_id = load_offline_first(
+                model_id=model_id,
+                device=self.device,
+                on_step=on_step,
+                fallback_id=fallback,
+            )
             self._models[model_id] = model
             self._tokenizers[model_id] = tokenizer
+            if effective_id != model_id:
+                self._models[effective_id] = model
+                self._tokenizers[effective_id] = tokenizer
 
         return self._models[model_id], self._tokenizers[model_id]
+
+    def ensure_model_loaded(
+        self,
+        mode: str = "auto",
+        sample_text: str = "",
+        on_step: Optional[Callable[[str], None]] = None,
+    ) -> tuple[str, str]:
+        """Pre-load weights and model for the selected or detected language mode."""
+        if mode == "auto":
+            key = self.detect_language(sample_text) if sample_text else "ru"
+        elif mode in MODELS_CATALOG:
+            key = mode
+        else:
+            key = "ru"
+
+        cfg = MODELS_CATALOG.get(key, MODELS_CATALOG["ru"])
+        self._load_model(key, on_step=on_step)
+        return key, cfg["name"]
 
     def detect_language(self, text: str) -> str:
         """Determine dominant text language: 'ru' or 'en'."""
@@ -57,6 +78,7 @@ class ModernAIDetector:
         text: str,
         mode: str = "auto",
         is_cancelled: Optional[Callable[[], bool]] = None,
+        on_step: Optional[Callable[[str], None]] = None,
     ) -> dict:
         """
         Score a single piece of text.
@@ -77,7 +99,7 @@ class ModernAIDetector:
 
         lang = self.detect_language(text) if mode == "auto" else mode
         chosen_key = lang if lang in MODELS_CATALOG else "ru"
-        model, tokenizer = self._load_model(chosen_key)
+        model, tokenizer = self._load_model(chosen_key, on_step=on_step)
         model_info = MODELS_CATALOG.get(chosen_key, MODELS_CATALOG["ru"])
 
         if is_cancelled and is_cancelled():
@@ -187,6 +209,7 @@ class ModernAIDetector:
         batch_size: int = 16,
         is_cancelled: Optional[Callable[[], bool]] = None,
         on_progress: Optional[Callable[[int, int], None]] = None,
+        on_step: Optional[Callable[[str], None]] = None,
     ) -> list[dict]:
         """Batch score texts with automatic preprocessing and tokenization."""
         if is_cancelled and is_cancelled():
@@ -203,7 +226,7 @@ class ModernAIDetector:
         else:
             chosen_key = "ru"
 
-        model, tokenizer = self._load_model(chosen_key)
+        model, tokenizer = self._load_model(chosen_key, on_step=on_step)
         model_info = MODELS_CATALOG.get(chosen_key, MODELS_CATALOG["ru"])
 
         if is_cancelled and is_cancelled():

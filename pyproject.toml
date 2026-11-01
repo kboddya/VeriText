@@ -23,6 +23,7 @@ dependencies = [
   "pydantic>=2.0.0",
   "brotli>=1.2.0",
   "brotlicffi>=1.2.0",
+  "rich>=13.0.0",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +34,7 @@ dev = [
 
 [project.scripts]
 veritext = "backend.cli:main"
+veritext-web = "backend.cli:run_web_entrypoint"
 
 [tool.setuptools]
 packages = ["backend", "backend.api"]

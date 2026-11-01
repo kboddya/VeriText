@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .routes import engine, router
 
@@ -31,7 +33,15 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Include API router first so /api/* routes take precedence
     application.include_router(router)
+
+    # Mount static frontend files if web/public exists
+    project_root = Path(__file__).resolve().parent.parent.parent
+    web_public = project_root / "web" / "public"
+    if web_public.exists() and (web_public / "index.html").exists():
+        application.mount("/", StaticFiles(directory=str(web_public), html=True), name="static")
+
     return application
 
 

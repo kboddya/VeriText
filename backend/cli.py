@@ -2,9 +2,52 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import os
 import sys
+import warnings
 from pathlib import Path
+
+# Silence third-party noise (PyTorch redirects, Transformers warnings/progress bars, HF)
+# UNLESS --log is explicitly requested.
+VERBOSE_LOG = "--log" in sys.argv
+if not VERBOSE_LOG:
+    os.environ["PYTHONWARNINGS"] = "ignore"
+    os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+    os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+    os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    warnings.filterwarnings("ignore")
+    logging.getLogger("torch").setLevel(logging.ERROR)
+    logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").setLevel(logging.ERROR)
+    logging.getLogger("transformers").setLevel(logging.ERROR)
+    logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+    logging.getLogger("veritext").setLevel(logging.WARNING)
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    logging.getLogger("veritext").setLevel(logging.DEBUG)
+
+import transformers
+
+if not VERBOSE_LOG:
+    transformers.logging.set_verbosity_error()
+    transformers.logging.disable_progress_bar()
+
 import pandas as pd
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from .engine import ModernAIDetector
 from .markers import detect_stylistic_markers
@@ -12,8 +55,28 @@ from .parsers import extract_text_from_file
 from .preprocessing import get_confidence_status
 from .reports import generate_batch_markdown_report, generate_markdown_report
 
+logger = logging.getLogger("veritext.cli")
+
+
+def create_progress(enabled: bool) -> Progress:
+    console = Console(stderr=True)
+    return Progress(
+        SpinnerColumn(spinner_name="dots"),
+        TextColumn("[bold cyan]{task.description}"),
+        BarColumn(bar_width=30),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+        disable=not enabled,
+    )
+
 
 def parse_args() -> argparse.Namespace:
+    # Allow running 'veritext web' or 'veritext ui' without dashes
+    if len(sys.argv) > 1 and sys.argv[1].lower() in {"web", "ui"}:
+        sys.argv[1] = "--web"
+
     parser = argparse.ArgumentParser(description="VeriText — AI Text & Document Detector CLI")
     parser.add_argument(
         "--mode",
@@ -43,11 +106,38 @@ def parse_args() -> argparse.Namespace:
         metavar="PATH",
         help="Save verification report in Markdown (.md) format to specified file path",
     )
+    parser.add_argument(
+        "--log",
+        action="store_true",
+        help="Enable verbose service logs (PyTorch, Transformers, Hugging Face, debug messages)",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host address for web server (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for web server (default: 8000)",
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not automatically open web browser on launch",
+    )
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--text", default=None, help="Input raw text string to analyze")
     group.add_argument("--file", default=None, help="Document file path (.pdf, .docx, .md, .txt)")
     group.add_argument("--input", default=None, help="Tabular dataset file path (.csv, .tsv)")
+    group.add_argument(
+        "--web",
+        "--ui",
+        action="store_true",
+        help="Launch interactive VeriText Web UI in browser",
+    )
 
     parser.add_argument("--text-column", default=None, help="Target text column name for --input")
     parser.add_argument("--output", default=None, help="Output destination path for scored .csv")
@@ -61,61 +151,83 @@ def score_text(
     as_json: bool,
     as_markdown: bool = False,
     report_path: Path | None = None,
+    show_progress: bool = True,
 ) -> int:
-    text_lang = detector.detect_language(text)
-    effective_mode = text_lang if mode == "auto" else mode
+    with create_progress(enabled=show_progress) as progress:
+        task = progress.add_task("[1/4] Определение языка текста...", total=4)
 
-    res = detector.score_single(text[:30000], mode=effective_mode)
-    markers = detect_stylistic_markers(text)
+        text_lang = detector.detect_language(text)
+        effective_mode = text_lang if mode == "auto" else mode
+        logger.info("Language detected: %s (mode=%s)", effective_mode, mode)
 
-    # Granular paragraph breakdown
-    raw_paras = [p.strip() for p in text.split("\n\n") if len(p.strip()) > 20]
-    if len(raw_paras) <= 1:
-        lines = [line.strip() for line in text.split("\n") if len(line.strip()) > 35]
-        raw_paras = lines if lines else [text]
+        def on_step(sub_msg: str) -> None:
+            progress.update(task, description=f"[2/4] {sub_msg}")
 
-    paras_to_score = raw_paras[:150]
-    scored_paragraphs = []
+        progress.update(task, advance=1, description=f"[2/4] Подгрузка весов нейросети ({effective_mode})...")
+        if hasattr(detector, "ensure_model_loaded"):
+            effective_key, model_name = detector.ensure_model_loaded(
+                effective_mode,
+                sample_text=text,
+                on_step=on_step,
+            )
+        else:
+            effective_key = effective_mode
+            model_name = getattr(detector, "model_name", "AI Detector")
 
-    if len(paras_to_score) > 1:
-        batch_results = detector.score_batch(paras_to_score, mode=effective_mode, batch_size=16)
-        ai_para_count = sum(1 for r in batch_results if r["label"] == "ai")
-        human_para_count = len(batch_results) - ai_para_count
+        progress.update(task, advance=1, description=f"[3/4] Анализ текста и стилистических маркеров ({model_name})...")
+        res = detector.score_single(text[:30000], mode=effective_mode)
+        markers = detect_stylistic_markers(text)
 
-        weights = [max(1, len(p.split())) for p in paras_to_score]
-        total_weight = sum(weights)
-        weighted_ai_sum = sum(
-            r["ai_probability"] * w for r, w in zip(batch_results, weights)
-        )
-        paragraph_scale = (
-            round((weighted_ai_sum / total_weight) * 100, 2)
-            if total_weight > 0
-            else res["human_ai_scale"]
-        )
+        # Granular paragraph breakdown
+        raw_paras = [p.strip() for p in text.split("\n\n") if len(p.strip()) > 20]
+        if len(raw_paras) <= 1:
+            lines = [line.strip() for line in text.split("\n") if len(line.strip()) > 35]
+            raw_paras = lines if lines else [text]
 
-        for idx, (p_text, r) in enumerate(zip(paras_to_score, batch_results)):
-            scored_paragraphs.append({
-                "index": idx + 1,
-                "text": p_text,
-                "label": r["label"],
-                "score": r["score"],
-                "human_ai_scale": r["human_ai_scale"],
-                "word_count": len(p_text.split()),
-            })
-        ai_paragraph_pct = round((ai_para_count / len(paras_to_score) * 100), 2)
-    else:
-        ai_para_count = 1 if res["label"] == "ai" else 0
-        human_para_count = 0 if res["label"] == "ai" else 1
-        paragraph_scale = res["human_ai_scale"]
-        ai_paragraph_pct = 100.0 if res["label"] == "ai" else 0.0
-        scored_paragraphs = [{
-            "index": 1,
-            "text": text,
-            "label": res["label"],
-            "score": res["score"],
-            "human_ai_scale": res["human_ai_scale"],
-            "word_count": len(text.split()),
-        }]
+        paras_to_score = raw_paras[:150]
+        scored_paragraphs = []
+
+        if len(paras_to_score) > 1:
+            batch_results = detector.score_batch(paras_to_score, mode=effective_mode, batch_size=16)
+            ai_para_count = sum(1 for r in batch_results if r["label"] == "ai")
+            human_para_count = len(batch_results) - ai_para_count
+
+            weights = [max(1, len(p.split())) for p in paras_to_score]
+            total_weight = sum(weights)
+            weighted_ai_sum = sum(
+                r["ai_probability"] * w for r, w in zip(batch_results, weights)
+            )
+            paragraph_scale = (
+                round((weighted_ai_sum / total_weight) * 100, 2)
+                if total_weight > 0
+                else res["human_ai_scale"]
+            )
+
+            for idx, (p_text, r) in enumerate(zip(paras_to_score, batch_results)):
+                scored_paragraphs.append({
+                    "index": idx + 1,
+                    "text": p_text,
+                    "label": r["label"],
+                    "score": r["score"],
+                    "human_ai_scale": r["human_ai_scale"],
+                    "word_count": len(p_text.split()),
+                })
+            ai_paragraph_pct = round((ai_para_count / len(paras_to_score) * 100), 2)
+        else:
+            ai_para_count = 1 if res["label"] == "ai" else 0
+            human_para_count = 0 if res["label"] == "ai" else 1
+            paragraph_scale = res["human_ai_scale"]
+            ai_paragraph_pct = 100.0 if res["label"] == "ai" else 0.0
+            scored_paragraphs = [{
+                "index": 1,
+                "text": text,
+                "label": res["label"],
+                "score": res["score"],
+                "human_ai_scale": res["human_ai_scale"],
+                "word_count": len(text.split()),
+            }]
+
+        progress.update(task, advance=1, description="[4/4] Финализация вердикта...")
 
     words = len(text.split())
     chars = len(text)
@@ -190,48 +302,70 @@ def score_document(
     as_json: bool,
     as_markdown: bool = False,
     report_path: Path | None = None,
+    show_progress: bool = True,
 ) -> int:
-    content = file_path.read_bytes()
-    full_text, paragraphs = extract_text_from_file(file_path.name, content)
+    with create_progress(enabled=show_progress) as progress:
+        task = progress.add_task(f"[1/5] Чтение и извлечение текста из {file_path.name}...", total=5)
+        content = file_path.read_bytes()
+        full_text, paragraphs = extract_text_from_file(file_path.name, content)
 
-    doc_lang = detector.detect_language(full_text)
-    effective_mode = doc_lang if mode == "auto" else mode
+        progress.update(task, advance=1, description="[2/5] Определение языка документа...")
+        doc_lang = detector.detect_language(full_text)
+        effective_mode = doc_lang if mode == "auto" else mode
+        logger.info("Document language detected: %s", effective_mode)
 
-    overall = detector.score_single(full_text[:30000], mode=effective_mode)
-    markers = detect_stylistic_markers(full_text)
+        def on_step(sub_msg: str) -> None:
+            progress.update(task, description=f"[3/5] {sub_msg}")
 
-    paras_to_score = paragraphs[:150]
-    paras_results = detector.score_batch(paras_to_score, mode=effective_mode)
+        progress.update(task, advance=1, description=f"[3/5] Подгрузка весов нейросети ({effective_mode})...")
+        if hasattr(detector, "ensure_model_loaded"):
+            effective_key, model_name = detector.ensure_model_loaded(
+                effective_mode,
+                sample_text=full_text,
+                on_step=on_step,
+            )
+        else:
+            effective_key = effective_mode
+            model_name = getattr(detector, "model_name", "AI Detector")
 
-    ai_paras = sum(1 for r in paras_results if r["label"] == "ai")
-    human_paras = len(paras_results) - ai_paras
+        progress.update(task, advance=1, description=f"[4/5] Анализ фрагментов ({len(paragraphs)} параграфов)...")
+        overall = detector.score_single(full_text[:30000], mode=effective_mode)
+        markers = detect_stylistic_markers(full_text)
 
-    scored_paragraphs = []
-    if paras_results:
-        weights = [max(1, len(p.split())) for p in paras_to_score]
-        total_weight = sum(weights)
-        weighted_ai_sum = sum(
-            res["ai_probability"] * w for res, w in zip(paras_results, weights)
-        )
-        ai_pct = (
-            round((weighted_ai_sum / total_weight) * 100, 2)
-            if total_weight > 0
-            else overall["human_ai_scale"]
-        )
+        paras_to_score = paragraphs[:150]
+        paras_results = detector.score_batch(paras_to_score, mode=effective_mode)
 
-        for idx, (p_text, r) in enumerate(zip(paras_to_score, paras_results)):
-            scored_paragraphs.append({
-                "index": idx + 1,
-                "text": p_text,
-                "label": r["label"],
-                "score": r["score"],
-                "human_ai_scale": r["human_ai_scale"],
-                "word_count": len(p_text.split()),
-            })
-        ai_paragraph_pct = round((ai_paras / len(paras_results) * 100), 2)
-    else:
-        ai_pct = overall["human_ai_scale"]
-        ai_paragraph_pct = 100.0 if overall["label"] == "ai" else 0.0
+        ai_paras = sum(1 for r in paras_results if r["label"] == "ai")
+        human_paras = len(paras_results) - ai_paras
+
+        scored_paragraphs = []
+        if paras_results:
+            weights = [max(1, len(p.split())) for p in paras_to_score]
+            total_weight = sum(weights)
+            weighted_ai_sum = sum(
+                res["ai_probability"] * w for res, w in zip(paras_results, weights)
+            )
+            ai_pct = (
+                round((weighted_ai_sum / total_weight) * 100, 2)
+                if total_weight > 0
+                else overall["human_ai_scale"]
+            )
+
+            for idx, (p_text, r) in enumerate(zip(paras_to_score, paras_results)):
+                scored_paragraphs.append({
+                    "index": idx + 1,
+                    "text": p_text,
+                    "label": r["label"],
+                    "score": r["score"],
+                    "human_ai_scale": r["human_ai_scale"],
+                    "word_count": len(p_text.split()),
+                })
+            ai_paragraph_pct = round((ai_paras / len(paras_results) * 100), 2)
+        else:
+            ai_pct = overall["human_ai_scale"]
+            ai_paragraph_pct = 100.0 if overall["label"] == "ai" else 0.0
+
+        progress.update(task, advance=1, description="[5/5] Формирование отчета...")
 
     words = len(full_text.split())
     chars = len(full_text)
@@ -309,24 +443,58 @@ def score_dataset(
     batch_size: int,
     report_path: Path | None = None,
     as_markdown: bool = False,
+    show_progress: bool = True,
 ) -> int:
-    sep = "\t" if input_path.suffix.lower() == ".tsv" else ","
-    frame = pd.read_csv(input_path, sep=sep, low_memory=False)
+    with create_progress(enabled=show_progress) as progress:
+        task = progress.add_task(f"[1/4] Загрузка таблицы {input_path.name}...", total=4)
+        sep = "\t" if input_path.suffix.lower() == ".tsv" else ","
+        frame = pd.read_csv(input_path, sep=sep, low_memory=False)
 
-    col = text_column
-    if not col:
-        for c in ("text", "content", "generation", "prompt", "body", "текст", "сообщение"):
-            if c in frame.columns:
-                col = c
-                break
+        col = text_column
         if not col:
-            col = str(frame.columns[0])
+            for c in ("text", "content", "generation", "prompt", "body", "текст", "сообщение"):
+                if c in frame.columns:
+                    col = c
+                    break
+            if not col:
+                col = str(frame.columns[0])
 
-    texts = frame[col].fillna("").astype(str).tolist()
-    preds = detector.score_batch(texts, mode=mode, batch_size=batch_size)
+        texts = frame[col].fillna("").astype(str).tolist()
 
-    frame["ai_label"] = [p["label"] for p in preds]
-    frame["ai_probability_pct"] = [p["human_ai_scale"] for p in preds]
+        def on_step(sub_msg: str) -> None:
+            progress.update(task, description=f"[2/4] {sub_msg}")
+
+        progress.update(task, advance=1, description=f"[2/4] Подгрузка весов нейросети ({mode})...")
+        if hasattr(detector, "ensure_model_loaded"):
+            effective_key, model_name = detector.ensure_model_loaded(
+                mode,
+                sample_text=texts[0] if texts else "",
+                on_step=on_step,
+            )
+        else:
+            effective_key = mode
+            model_name = getattr(detector, "model_name", "AI Detector")
+
+        progress.update(task, advance=1, description=f"[3/4] Классификация {len(texts)} записей...")
+        batch_task = progress.add_task(
+            f"  Обработка записей ({model_name})...",
+            total=len(texts),
+        )
+
+        def on_batch_progress(completed: int, total: int) -> None:
+            progress.update(batch_task, completed=completed)
+
+        preds = detector.score_batch(
+            texts,
+            mode=mode,
+            batch_size=batch_size,
+            on_progress=on_batch_progress,
+        )
+        progress.remove_task(batch_task)
+
+        progress.update(task, advance=1, description="[4/4] Экспорт и сохранение результатов...")
+        frame["ai_label"] = [p["label"] for p in preds]
+        frame["ai_probability_pct"] = [p["human_ai_scale"] for p in preds]
 
     total_rows = len(preds)
     ai_count = sum(1 for p in preds if p["label"] == "ai")
@@ -366,8 +534,67 @@ def score_dataset(
     return 0
 
 
+def run_web(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    open_browser: bool = True,
+    log_level: str = "warning",
+) -> int:
+    import threading
+    import webbrowser
+    import uvicorn
+    from rich.console import Console
+
+    console = Console(stderr=True)
+    url = f"http://{host}:{port}"
+
+    console.print()
+    console.print(f"[bold green]✓[/bold green] [bold]VeriText Web UI запускается на:[/bold] [cyan underline]{url}[/cyan underline]")
+    console.print("[dim]Для остановки нажмите Ctrl+C[/dim]")
+    console.print()
+
+    if open_browser:
+        def _open():
+            import time
+            time.sleep(1.0)
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+
+        threading.Thread(target=_open, daemon=True).start()
+
+    try:
+        uvicorn.run(
+            "backend.api.app:app",
+            host=host,
+            port=port,
+            log_level=log_level,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Сервер VeriText Web UI остановлен.[/yellow]")
+    return 0
+
+
+def run_web_entrypoint() -> int:
+    if "--web" not in sys.argv:
+        sys.argv.insert(1, "--web")
+    return main()
+
+
 def main() -> int:
     args = parse_args()
+    if args.web:
+        log_level = "info" if args.log else "warning"
+        return run_web(
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_browser,
+            log_level=log_level,
+        )
+
+    show_progress = not args.log and sys.stderr.isatty()
+
     device = None if args.device == "auto" else args.device
     detector = ModernAIDetector(device=device)
 
@@ -379,6 +606,7 @@ def main() -> int:
             args.json,
             as_markdown=args.markdown,
             report_path=args.report_md,
+            show_progress=show_progress,
         )
     elif args.file is not None:
         return score_document(
@@ -388,6 +616,7 @@ def main() -> int:
             args.json,
             as_markdown=args.markdown,
             report_path=args.report_md,
+            show_progress=show_progress,
         )
     elif args.input is not None:
         return score_dataset(
@@ -399,6 +628,7 @@ def main() -> int:
             args.batch_size,
             report_path=args.report_md,
             as_markdown=args.markdown,
+            show_progress=show_progress,
         )
     return 0
 
