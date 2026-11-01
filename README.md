@@ -60,6 +60,7 @@ veritext/
 │   ├── preprocessing.py          # Canonical text normalization & language detection
 │   ├── markers.py                # Generative stylistic marker detection
 │   ├── parsers.py                # Document extractors (PDF, DOCX, MD, TXT)
+│   ├── reports.py                # Markdown (.md) verification report generator
 │   ├── cli.py                    # Command-line interface (`veritext`)
 │   └── api/                      # REST API application
 │       ├── __init__.py
@@ -120,19 +121,28 @@ pip install -e ".[dev]"
 veritext --text "In today's rapidly evolving digital landscape, artificial intelligence plays a crucial role..."
 ```
 
-For machine-readable output:
+For Markdown verification reports (stdout or file export):
+```bash
+# Print report in Markdown format to stdout
+veritext --text "Your text here" --markdown
+
+# Save report directly to a Markdown (.md) file
+veritext --text "Your text here" --report-md report.md
+```
+
+For machine-readable JSON output:
 ```bash
 veritext --text "Your text here" --json
 ```
 
 ### 3. Analyze a Document (PDF / DOCX / MD / TXT)
 ```bash
-veritext --file essay.pdf
+veritext --file essay.pdf --report-md report.md
 ```
 
 ### 4. Batch Score a Tabular Dataset (CSV / TSV)
 ```bash
-veritext --input dataset.csv --text-column text --output scored_dataset.csv
+veritext --input dataset.csv --text-column text --output scored_dataset.csv --report-md batch_report.md
 ```
 
 ### 5. Run Native API Server

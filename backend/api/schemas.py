@@ -19,3 +19,10 @@ class AbortResponse(BaseModel):
     aborted: bool
     message: str
 
+
+class MarkdownReportRequest(BaseModel):
+    data: Optional[dict] = Field(default=None, description="Inspection result payload from score or document endpoints")
+    report_type: Optional[str] = Field(default="single", description="Type of report: 'single' for text/document, 'batch' for dataset")
+    filename: Optional[str] = Field(default=None, description="Optional custom filename override")
+
+

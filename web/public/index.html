@@ -243,10 +243,26 @@
                             </div>
                             <p id="confidence-status-desc" class="text-xs text-slate-300 mt-2.5 max-w-2xl leading-relaxed">High confidence human authorship with natural lexical variety and burstiness.</p>
                         </div>
-                        <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
-                            <span id="active-source-badge" class="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300">Source: Direct Text</span>
-                            <span id="active-model-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300">Model: RuBERT-AI</span>
-                            <span id="active-device-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-emerald-400">Device: MPS</span>
+                        <div class="flex flex-col items-start md:items-end gap-3">
+                            <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
+                                <span id="active-source-badge" class="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300">Source: Direct Text</span>
+                                <span id="active-model-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300">Model: RuBERT-AI</span>
+                                <span id="active-device-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-emerald-400">Device: MPS</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button id="btn-export-unified-md" onclick="downloadUnifiedMarkdownReport()" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 active:bg-blue-600/40 text-blue-300 border border-blue-500/30 hover:border-blue-500/50 text-xs font-semibold transition shadow-sm" title="Download detailed verification report in Markdown (.md) format">
+                                    <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                    <span>Download Report (.md)</span>
+                                </button>
+                                <button id="btn-copy-unified-md" onclick="copyUnifiedMarkdownReport()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition" title="Copy Markdown report to clipboard">
+                                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                                    </svg>
+                                    <span>Copy .md</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -449,12 +465,18 @@
                             <span id="batch-human-pct" class="text-xs text-emerald-500 font-mono">(0%)</span>
                         </div>
                     </div>
-                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-center">
-                        <button id="btn-download-csv" onclick="downloadScoredCSV()" class="w-full h-full py-2 px-4 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col gap-2 justify-center">
+                        <button id="btn-download-csv" onclick="downloadScoredCSV()" class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                             </svg>
                             Download Scored CSV
+                        </button>
+                        <button id="btn-download-batch-md" onclick="downloadBatchMarkdownReport()" class="w-full py-2 px-3 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 hover:border-blue-500/50 font-semibold rounded-lg text-xs transition flex items-center justify-center gap-2 shadow-sm" title="Download batch summary report in Markdown (.md)">
+                            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            Download Report (.md)
                         </button>
                     </div>
                 </div>

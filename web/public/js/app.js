@@ -786,9 +786,10 @@ function renderBatchResult(data) {
     thead.innerHTML = '';
     tbody.innerHTML = '';
 
-    if (!data.preview || data.preview.length === 0) return;
+    const previewList = data.preview_rows || data.preview || [];
+    if (previewList.length === 0) return;
 
-    const cols = Object.keys(data.preview[0]);
+    const cols = data.preview_columns || Object.keys(previewList[0]);
     const headerRow = document.createElement('tr');
     cols.forEach(col => {
         const th = document.createElement('th');
@@ -798,17 +799,17 @@ function renderBatchResult(data) {
     });
     thead.appendChild(headerRow);
 
-    data.preview.forEach(row => {
+    previewList.forEach(row => {
         const tr = document.createElement('tr');
         tr.className = "hover:bg-slate-800/40";
         cols.forEach(col => {
             const td = document.createElement('td');
             td.className = "px-4 py-2 truncate max-w-xs";
             const val = row[col];
-            if (col === 'ai_prediction') {
+            if (col === 'ai_prediction' || col === 'ai_detector_label' || col === 'ai_label') {
                 const isAI = String(val).toLowerCase() === 'ai';
                 td.innerHTML = `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${isAI ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'}">${val}</span>`;
-            } else if (col === 'human_ai_scale') {
+            } else if (col === 'human_ai_scale' || col === 'ai_probability_pct') {
                 td.textContent = (typeof val === 'number') ? `${val.toFixed(1)}%` : val;
             } else {
                 td.textContent = val !== null ? String(val) : '';
@@ -820,11 +821,145 @@ function renderBatchResult(data) {
 }
 
 function downloadScoredCSV() {
-    if (!lastBatchResult || !lastBatchResult.download_token) {
-        alert('No scored data available for download.');
+    if (!lastBatchResult) {
+        showToast('No scored data available for download.', 'warning');
         return;
     }
-    window.location.href = `/api/download/${lastBatchResult.download_token}`;
+    if (lastBatchResult.csv_content) {
+        const blob = new Blob([lastBatchResult.csv_content], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = lastBatchResult.filename || 'scored_dataset.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Scored CSV downloaded', 'success');
+    } else if (lastBatchResult.download_token) {
+        window.location.href = `/api/download/${lastBatchResult.download_token}`;
+    } else {
+        showToast('No CSV content available to download', 'warning');
+    }
+}
+
+// ----------------------------------------------------
+// MARKDOWN REPORT EXPORT (WEB MODE)
+// ----------------------------------------------------
+async function getUnifiedMarkdownReportText() {
+    if (!lastUnifiedResult) {
+        throw new Error('No inspection results available to generate report.');
+    }
+
+    const payload = {
+        data: lastUnifiedResult,
+        report_type: 'single',
+        filename: lastUnifiedResult.filename || (selectedUnifiedFile ? selectedUnifiedFile.name : 'direct_text_analysis')
+    };
+
+    const res = await fetch('/api/report/markdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `Server returned HTTP ${res.status}`);
+    }
+
+    return await res.text();
+}
+
+async function downloadUnifiedMarkdownReport() {
+    if (!lastUnifiedResult) {
+        showToast('Please run an analysis first.', 'warning');
+        return;
+    }
+
+    try {
+        showToast('Generating Markdown report...', 'info');
+        const mdText = await getUnifiedMarkdownReportText();
+        const baseName = lastUnifiedResult.filename || (selectedUnifiedFile ? selectedUnifiedFile.name : 'text_inspection');
+        const cleanBase = baseName.replace(/\.[^/.]+$/, "");
+        const filename = `report_${cleanBase}.md`;
+
+        const blob = new Blob([mdText], { type: 'text/markdown;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('Markdown report downloaded successfully', 'success');
+    } catch (err) {
+        showToast('Failed to download report: ' + err.message, 'error');
+    }
+}
+
+async function copyUnifiedMarkdownReport() {
+    if (!lastUnifiedResult) {
+        showToast('Please run an analysis first.', 'warning');
+        return;
+    }
+
+    try {
+        showToast('Generating Markdown report...', 'info');
+        const mdText = await getUnifiedMarkdownReportText();
+        await navigator.clipboard.writeText(mdText);
+        showToast('Markdown report copied to clipboard!', 'success');
+    } catch (err) {
+        showToast('Failed to copy report: ' + err.message, 'error');
+    }
+}
+
+async function downloadBatchMarkdownReport() {
+    if (!lastBatchResult) {
+        showToast('Please process a batch dataset first.', 'warning');
+        return;
+    }
+
+    try {
+        showToast('Generating Batch Markdown report...', 'info');
+        const payload = {
+            data: lastBatchResult,
+            report_type: 'batch',
+            filename: lastBatchResult.filename || (selectedBatchFile ? selectedBatchFile.name : 'dataset.csv')
+        };
+
+        const res = await fetch('/api/report/markdown', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            throw new Error(errJson.detail || `Server returned HTTP ${res.status}`);
+        }
+
+        const mdText = await res.text();
+        const baseName = lastBatchResult.filename || (selectedBatchFile ? selectedBatchFile.name : 'dataset');
+        const cleanBase = baseName.replace(/\.[^/.]+$/, "");
+        const filename = `report_${cleanBase}.md`;
+
+        const blob = new Blob([mdText], { type: 'text/markdown;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('Batch Markdown report downloaded', 'success');
+    } catch (err) {
+        showToast('Failed to download report: ' + err.message, 'error');
+    }
 }
 
 // ----------------------------------------------------

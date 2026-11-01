@@ -5,7 +5,7 @@ import io
 from typing import Optional
 import pandas as pd
 import torch
-from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Response, UploadFile
 
 from ..cancellation import OperationCancelled, cancellation_manager, track_cancellation
 from ..config import DEVICE, MODELS_CATALOG
@@ -13,7 +13,8 @@ from ..engine import ModernAIDetector
 from ..markers import detect_stylistic_markers
 from ..parsers import extract_text_from_file
 from ..preprocessing import get_confidence_status
-from .schemas import AbortRequest, AbortResponse, ScoreRequest
+from ..reports import generate_batch_markdown_report, generate_markdown_report
+from .schemas import AbortRequest, AbortResponse, MarkdownReportRequest, ScoreRequest
 
 router = APIRouter(prefix="/api", tags=["detector"])
 
@@ -512,3 +513,48 @@ async def score_file_endpoint(
             }
         except OperationCancelled:
             raise HTTPException(status_code=499, detail="Analysis cancelled by user.")
+
+
+@router.post("/report/markdown")
+async def generate_markdown_report_endpoint(payload: dict) -> Response:
+    """
+    Generate and return a downloadable Markdown (.md) inspection report.
+    Accepts either { "data": ..., "report_type": ... } or direct inspection result dictionary.
+    """
+    if not payload:
+        raise HTTPException(status_code=400, detail="Payload data is required to generate report.")
+
+    if "data" in payload and isinstance(payload["data"], dict):
+        target_data = payload["data"]
+        report_type = payload.get("report_type", "single")
+        filename = payload.get("filename")
+    else:
+        target_data = payload
+        summary = payload.get("summary") or {}
+        report_type = "batch" if ("total_rows" in summary or "preview_rows" in payload) else "single"
+        filename = payload.get("filename")
+
+    if report_type == "batch":
+        md_content = generate_batch_markdown_report(
+            target_data,
+            filename=filename or target_data.get("filename"),
+        )
+        base_name = filename or target_data.get("filename") or "dataset"
+    else:
+        md_content = generate_markdown_report(
+            target_data,
+            source_name=filename or target_data.get("filename"),
+        )
+        base_name = filename or target_data.get("filename") or "veritext_inspection"
+
+    clean_base = base_name.rsplit(".", 1)[0] if "." in base_name else base_name
+    download_filename = f"report_{clean_base}.md"
+
+    return Response(
+        content=md_content,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{download_filename}"',
+        },
+    )
+
