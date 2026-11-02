@@ -65,7 +65,7 @@ class TestCacheAndCLI(unittest.TestCase):
             mock_model.to.assert_called_once_with(device)
             mock_model.eval.assert_called_once()
             self.assertEqual(eff_id, "fake/test-model")
-            self.assertTrue(any("Подгрузка весов" in s for s in steps_recorded))
+            self.assertTrue(any("Loading model weights" in s for s in steps_recorded))
 
     def test_load_offline_first_falls_back_to_remote_when_local_absent(self) -> None:
         mock_tokenizer = MagicMock()
@@ -91,7 +91,7 @@ class TestCacheAndCLI(unittest.TestCase):
             self.assertEqual(mock_tok.call_args_list[0].kwargs.get("local_files_only"), True)
             self.assertEqual(mock_tok.call_args_list[1].kwargs.get("local_files_only"), False)
             mock_rec.assert_called_once_with("fake/remote-model")
-            self.assertTrue(any("Загрузка модели из Hugging Face" in s for s in steps_recorded))
+            self.assertTrue(any("Downloading model from Hugging Face" in s for s in steps_recorded))
 
     def test_cli_parse_log_flag(self) -> None:
         with patch("sys.argv", ["veritext", "--text", "Test string", "--log"]):

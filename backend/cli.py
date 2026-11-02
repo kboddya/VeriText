@@ -154,7 +154,7 @@ def score_text(
     show_progress: bool = True,
 ) -> int:
     with create_progress(enabled=show_progress) as progress:
-        task = progress.add_task("[1/4] Определение языка текста...", total=4)
+        task = progress.add_task("[1/4] Detecting text language...", total=4)
 
         text_lang = detector.detect_language(text)
         effective_mode = text_lang if mode == "auto" else mode
@@ -163,7 +163,7 @@ def score_text(
         def on_step(sub_msg: str) -> None:
             progress.update(task, description=f"[2/4] {sub_msg}")
 
-        progress.update(task, advance=1, description=f"[2/4] Подгрузка весов нейросети ({effective_mode})...")
+        progress.update(task, advance=1, description=f"[2/4] Loading model weights ({effective_mode})...")
         if hasattr(detector, "ensure_model_loaded"):
             effective_key, model_name = detector.ensure_model_loaded(
                 effective_mode,
@@ -174,7 +174,7 @@ def score_text(
             effective_key = effective_mode
             model_name = getattr(detector, "model_name", "AI Detector")
 
-        progress.update(task, advance=1, description=f"[3/4] Анализ текста и стилистических маркеров ({model_name})...")
+        progress.update(task, advance=1, description=f"[3/4] Analyzing text & stylistic markers ({model_name})...")
         res = detector.score_single(text[:30000], mode=effective_mode)
         markers = detect_stylistic_markers(text)
 
@@ -227,7 +227,7 @@ def score_text(
                 "word_count": len(text.split()),
             }]
 
-        progress.update(task, advance=1, description="[4/4] Финализация вердикта...")
+        progress.update(task, advance=1, description="[4/4] Finalizing verification verdict...")
 
     words = len(text.split())
     chars = len(text)
@@ -305,11 +305,11 @@ def score_document(
     show_progress: bool = True,
 ) -> int:
     with create_progress(enabled=show_progress) as progress:
-        task = progress.add_task(f"[1/5] Чтение и извлечение текста из {file_path.name}...", total=5)
+        task = progress.add_task(f"[1/5] Extracting text from {file_path.name}...", total=5)
         content = file_path.read_bytes()
         full_text, paragraphs = extract_text_from_file(file_path.name, content)
 
-        progress.update(task, advance=1, description="[2/5] Определение языка документа...")
+        progress.update(task, advance=1, description="[2/5] Detecting document language...")
         doc_lang = detector.detect_language(full_text)
         effective_mode = doc_lang if mode == "auto" else mode
         logger.info("Document language detected: %s", effective_mode)
@@ -317,7 +317,7 @@ def score_document(
         def on_step(sub_msg: str) -> None:
             progress.update(task, description=f"[3/5] {sub_msg}")
 
-        progress.update(task, advance=1, description=f"[3/5] Подгрузка весов нейросети ({effective_mode})...")
+        progress.update(task, advance=1, description=f"[3/5] Loading model weights ({effective_mode})...")
         if hasattr(detector, "ensure_model_loaded"):
             effective_key, model_name = detector.ensure_model_loaded(
                 effective_mode,
@@ -328,7 +328,7 @@ def score_document(
             effective_key = effective_mode
             model_name = getattr(detector, "model_name", "AI Detector")
 
-        progress.update(task, advance=1, description=f"[4/5] Анализ фрагментов ({len(paragraphs)} параграфов)...")
+        progress.update(task, advance=1, description=f"[4/5] Analyzing {len(paragraphs)} paragraphs ({model_name})...")
         overall = detector.score_single(full_text[:30000], mode=effective_mode)
         markers = detect_stylistic_markers(full_text)
 
@@ -365,7 +365,7 @@ def score_document(
             ai_pct = overall["human_ai_scale"]
             ai_paragraph_pct = 100.0 if overall["label"] == "ai" else 0.0
 
-        progress.update(task, advance=1, description="[5/5] Формирование отчета...")
+        progress.update(task, advance=1, description="[5/5] Generating verification report...")
 
     words = len(full_text.split())
     chars = len(full_text)
@@ -446,7 +446,7 @@ def score_dataset(
     show_progress: bool = True,
 ) -> int:
     with create_progress(enabled=show_progress) as progress:
-        task = progress.add_task(f"[1/4] Загрузка таблицы {input_path.name}...", total=4)
+        task = progress.add_task(f"[1/4] Loading dataset {input_path.name}...", total=4)
         sep = "\t" if input_path.suffix.lower() == ".tsv" else ","
         frame = pd.read_csv(input_path, sep=sep, low_memory=False)
 
@@ -464,7 +464,7 @@ def score_dataset(
         def on_step(sub_msg: str) -> None:
             progress.update(task, description=f"[2/4] {sub_msg}")
 
-        progress.update(task, advance=1, description=f"[2/4] Подгрузка весов нейросети ({mode})...")
+        progress.update(task, advance=1, description=f"[2/4] Loading model weights ({mode})...")
         if hasattr(detector, "ensure_model_loaded"):
             effective_key, model_name = detector.ensure_model_loaded(
                 mode,
@@ -475,9 +475,9 @@ def score_dataset(
             effective_key = mode
             model_name = getattr(detector, "model_name", "AI Detector")
 
-        progress.update(task, advance=1, description=f"[3/4] Классификация {len(texts)} записей...")
+        progress.update(task, advance=1, description=f"[3/4] Batch classifying {len(texts)} rows...")
         batch_task = progress.add_task(
-            f"  Обработка записей ({model_name})...",
+            f"  Processing rows ({model_name})...",
             total=len(texts),
         )
 
@@ -492,7 +492,7 @@ def score_dataset(
         )
         progress.remove_task(batch_task)
 
-        progress.update(task, advance=1, description="[4/4] Экспорт и сохранение результатов...")
+        progress.update(task, advance=1, description="[4/4] Exporting and saving scored dataset...")
         frame["ai_label"] = [p["label"] for p in preds]
         frame["ai_probability_pct"] = [p["human_ai_scale"] for p in preds]
 
@@ -549,8 +549,8 @@ def run_web(
     url = f"http://{host}:{port}"
 
     console.print()
-    console.print(f"[bold green]✓[/bold green] [bold]VeriText Web UI запускается на:[/bold] [cyan underline]{url}[/cyan underline]")
-    console.print("[dim]Для остановки нажмите Ctrl+C[/dim]")
+    console.print(f"[bold green]✓[/bold green] [bold]VeriText Web UI starting at:[/bold] [cyan underline]{url}[/cyan underline]")
+    console.print("[dim]Press Ctrl+C to stop.[/dim]")
     console.print()
 
     if open_browser:
@@ -572,7 +572,7 @@ def run_web(
             log_level=log_level,
         )
     except KeyboardInterrupt:
-        console.print("\n[yellow]Сервер VeriText Web UI остановлен.[/yellow]")
+        console.print("\n[yellow]VeriText Web UI server stopped.[/yellow]")
     return 0
 
 

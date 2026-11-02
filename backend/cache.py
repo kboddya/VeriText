@@ -75,7 +75,7 @@ def load_offline_first(
 
     # 1. Attempt local offline load
     if on_step:
-        on_step(f"Поиск весов в локальном кеше ({model_name})...")
+        on_step(f"Checking local cache for weights ({model_name})...")
 
     local_loaded = False
     tokenizer = None
@@ -84,56 +84,56 @@ def load_offline_first(
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_id, local_files_only=True)
         if on_step:
-            on_step(f"Подгрузка весов нейросети ({model_name})...")
+            on_step(f"Loading model weights ({model_name})...")
         model = AutoModelForSequenceClassification.from_pretrained(model_id, local_files_only=True)
         if on_step:
-            on_step(f"Перенос весов на устройство {device}...")
+            on_step(f"Transferring weights to device ({device})...")
         model.to(device)
         model.eval()
         local_loaded = True
-        logger.info("Модель %s успешно загружена из локального кеша (offline mode)", model_id)
+        logger.info("Model %s loaded successfully from local cache (offline mode)", model_id)
     except Exception as local_err:
-        logger.info("Локальный кеш для %s недоступен: %s", model_id, local_err)
+        logger.info("Local cache for %s not found: %s", model_id, local_err)
 
     if local_loaded:
         # Check weekly remote check policy (after first trying local)
         if should_check_remote(model_id):
-            logger.info("Прошло более 7 дней с последней проверки для %s. Проверка Hugging Face...", model_id)
+            logger.info("Over 7 days since last check for %s. Checking Hugging Face for updates...", model_id)
             try:
                 from huggingface_hub import model_info
 
                 model_info(model_id, timeout=3.0)
                 record_check(model_id)
-                logger.info("Проверка Hugging Face для %s завершена успешно", model_id)
+                logger.info("Hugging Face check for %s completed successfully", model_id)
             except Exception as net_err:
-                logger.info("Не удалось связаться с Hugging Face (работаем оффлайн): %s", net_err)
+                logger.info("Could not connect to Hugging Face (continuing in offline mode): %s", net_err)
         return model, tokenizer, model_id
 
     # 2. Local cache was missing or incomplete: try remote download from Hugging Face
     if on_step:
-        on_step(f"Загрузка модели из Hugging Face ({model_name})...")
-    logger.info("Загрузка %s из Hugging Face Hub (local_files_only=False)...", model_id)
+        on_step(f"Downloading model from Hugging Face ({model_name})...")
+    logger.info("Downloading %s from Hugging Face Hub (local_files_only=False)...", model_id)
 
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_id, local_files_only=False)
         if on_step:
-            on_step(f"Подгрузка весов нейросети ({model_name})...")
+            on_step(f"Loading model weights ({model_name})...")
         model = AutoModelForSequenceClassification.from_pretrained(model_id, local_files_only=False)
         if on_step:
-            on_step(f"Перенос весов на устройство {device}...")
+            on_step(f"Transferring weights to device ({device})...")
         model.to(device)
         model.eval()
         record_check(model_id)
-        logger.info("Модель %s успешно скачана и сохранена в кеш", model_id)
+        logger.info("Model %s downloaded and cached successfully", model_id)
         return model, tokenizer, model_id
     except Exception as remote_err:
-        logger.warning("Ошибка при загрузке модели %s из Hugging Face: %s", model_id, remote_err)
+        logger.warning("Failed to download model %s from Hugging Face: %s", model_id, remote_err)
         if fallback_id:
-            logger.info("Переключение на резервную модель: %s", fallback_id)
+            logger.info("Switching to fallback model: %s", fallback_id)
             if on_step:
-                on_step(f"Переключение на резервную модель ({fallback_id.split('/')[-1]})...")
+                on_step(f"Switching to fallback model ({fallback_id.split('/')[-1]})...")
             return load_offline_first(fallback_id, device, on_step=on_step, fallback_id=None)
         raise RuntimeError(
-            f"Не удалось загрузить модель '{model_id}' (локальный кеш отсутствует, "
-            f"а загрузка из Hugging Face завершилась ошибкой: {remote_err})"
+            f"Failed to load model '{model_id}' (local cache not found, "
+            f"and Hugging Face download failed: {remote_err})"
         ) from remote_err
