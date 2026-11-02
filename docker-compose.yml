@@ -5,19 +5,34 @@ services:
       context: .
       dockerfile: docker/api.Dockerfile
       args:
-        PRELOAD_MODELS: "true"
+        PRELOAD_MODELS: ${PRELOAD_MODELS:-true}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
         HF_TOKEN: ${HF_TOKEN:-}
     image: veritext-api:latest
     command: ["uvicorn", "backend.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    init: true
     restart: unless-stopped
     expose:
       - "8000"
     environment:
       - HF_TOKEN=${HF_TOKEN:-}
       - PYTHONPATH=/app
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+      - MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
     volumes:
-      - hf_cache:/root/.cache/huggingface
+      - hf_cache:/home/veritext/.cache
       - ./backend:/app/backend:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - internal-net
 
@@ -27,18 +42,32 @@ services:
       context: .
       dockerfile: docker/web.Dockerfile
     image: veritext-web:latest
+    init: true
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "${WEB_PORT:-8080}:80"
     volumes:
       - ./web/public:/usr/share/nginx/html:ro
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - internal-net
 
 volumes:
   hf_cache:
+    name: veritext_model_cache
 
 networks:
   internal-net:

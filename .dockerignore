@@ -1,16 +1,47 @@
+# Version control
 .git
 .gitignore
-.venv
-venv
-__pycache__
+.gitattributes
+
+# Docker configuration & compose files (prevent build context invalidation)
+.dockerignore
+docker/
+docker-compose*.yml
+
+# Environment & secrets
+.env
+.env.*
+
+# Python virtual environments & caches
+.venv/
+venv/
+ENV/
+__pycache__/
 *.py[cod]
 *$py.class
-*.egg-info
+*.so
+*.egg-info/
+.installed.cfg
+*.egg
 build/
 dist/
-outputs/
+wheels/
+
+# Testing & linters
 tests/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime outputs, logs & IDE
+outputs/
+*.log
+.idea/
+.vscode/
 .DS_Store
+
+# Documentation (keep README.md required by pyproject.toml)
+*.md
+!README.md

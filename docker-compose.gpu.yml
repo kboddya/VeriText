@@ -2,6 +2,9 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
 services:
   api:
+    build:
+      args:
+        TORCH_INDEX_URL: ${TORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu124}
     deploy:
       resources:
         reservations:

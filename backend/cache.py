@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -12,7 +13,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 logger = logging.getLogger("veritext.cache")
 
-CACHE_DIR = Path.home() / ".cache" / "veritext"
+CACHE_DIR = Path(os.environ.get("VERITEXT_CACHE_DIR", Path.home() / ".cache" / "veritext"))
 SYNC_FILE = CACHE_DIR / "model_sync.json"
 CHECK_INTERVAL_SECONDS = 7 * 24 * 3600  # 7 days (1 week)
 
