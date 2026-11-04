@@ -43,6 +43,7 @@ class CancellationManager:
         percent: int,
         step: Optional[int] = None,
         total_steps: Optional[int] = None,
+        **kwargs: Any,
     ) -> None:
         with self._lock:
             if request_id in self._progress:
@@ -53,6 +54,7 @@ class CancellationManager:
                     p["step"] = step
                 if total_steps is not None:
                     p["total_steps"] = total_steps
+                p.update(kwargs)
 
     def get_progress(self, request_id: str) -> dict:
         with self._lock:

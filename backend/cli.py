@@ -38,7 +38,7 @@ if not VERBOSE_LOG:
     transformers.logging.set_verbosity_error()
     transformers.logging.disable_progress_bar()
 
-import pandas as pd
+from rich import box
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -48,12 +48,14 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+from rich.table import Table
 
 from .engine import ModernAIDetector
+from .humanizer import ModernTextHumanizer
 from .markers import detect_stylistic_markers
 from .parsers import extract_text_from_file
 from .preprocessing import get_confidence_status
-from .reports import generate_batch_markdown_report, generate_markdown_report
+from .reports import generate_humanize_markdown_report, generate_markdown_report
 
 logger = logging.getLogger("veritext.cli")
 
@@ -90,7 +92,6 @@ def parse_args() -> argparse.Namespace:
         default="auto",
         help="Inference compute device",
     )
-    parser.add_argument("--batch-size", type=int, default=32, help="Inference batch size")
     parser.add_argument("--json", action="store_true", help="Output results in JSON format")
     parser.add_argument(
         "--markdown",
@@ -131,7 +132,6 @@ def parse_args() -> argparse.Namespace:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--text", default=None, help="Input raw text string to analyze")
     group.add_argument("--file", default=None, help="Document file path (.pdf, .docx, .md, .txt)")
-    group.add_argument("--input", default=None, help="Tabular dataset file path (.csv, .tsv)")
     group.add_argument(
         "--web",
         "--ui",
@@ -139,8 +139,23 @@ def parse_args() -> argparse.Namespace:
         help="Launch interactive VeriText Web UI in browser",
     )
 
-    parser.add_argument("--text-column", default=None, help="Target text column name for --input")
-    parser.add_argument("--output", default=None, help="Output destination path for scored .csv")
+    parser.add_argument(
+        "--humanize",
+        action="store_true",
+        help="Run detector-guided AI text humanization",
+    )
+    parser.add_argument(
+        "--strength",
+        choices=["light", "balanced", "aggressive"],
+        default="balanced",
+        help="Humanization intensity preset",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="Output destination file path",
+    )
     return parser.parse_args()
 
 
@@ -434,103 +449,252 @@ def score_document(
     return 0
 
 
-def score_dataset(
-    detector: ModernAIDetector,
-    input_path: Path,
-    output_path: Path | None,
-    text_column: str | None,
-    mode: str,
-    batch_size: int,
-    report_path: Path | None = None,
+def humanize_cli(
+    text: str | None = None,
+    file_path: Path | str | None = None,
+    mode: str = "auto",
+    strength: str = "balanced",
+    device: str | None = None,
+    output_path: Path | str | None = None,
+    as_json: bool = False,
     as_markdown: bool = False,
+    report_path: Path | None = None,
     show_progress: bool = True,
 ) -> int:
+    """Execute detector-guided AI text humanization from CLI."""
+    if text is not None:
+        raw_text = text
+        source_name = "CLI Text Input"
+    elif file_path is not None:
+        p = Path(file_path)
+        content = p.read_bytes()
+        raw_text, _ = extract_text_from_file(p.name, content)
+        source_name = p.name
+    else:
+        logger.error("No input text or file provided for humanization.")
+        return 1
+
+    humanizer = ModernTextHumanizer(device=device)
+
     with create_progress(enabled=show_progress) as progress:
-        task = progress.add_task(f"[1/4] Loading dataset {input_path.name}...", total=4)
-        sep = "\t" if input_path.suffix.lower() == ".tsv" else ","
-        frame = pd.read_csv(input_path, sep=sep, low_memory=False)
+        task = progress.add_task("[1/4] Scrubbing AI clichés & formulaic transitions...", total=100)
 
-        col = text_column
-        if not col:
-            for c in ("text", "content", "generation", "prompt", "body", "текст", "сообщение"):
-                if c in frame.columns:
-                    col = c
-                    break
-            if not col:
-                col = str(frame.columns[0])
+        def on_progress(pct: Any, *p_args: Any) -> None:
+            effective_pct = int(pct) if isinstance(pct, (int, float)) else 25
+            if len(p_args) >= 2:
+                step_idx = p_args[0]
+                msg = p_args[1]
+                progress.update(task, completed=effective_pct, description=f"[{step_idx}/4] {msg}")
+            elif len(p_args) == 1:
+                step_idx = pct
+                progress.update(task, completed=min(100, int(step_idx * 25)))
+            else:
+                progress.update(task, completed=effective_pct)
 
-        texts = frame[col].fillna("").astype(str).tolist()
-
-        def on_step(sub_msg: str) -> None:
-            progress.update(task, description=f"[2/4] {sub_msg}")
-
-        progress.update(task, advance=1, description=f"[2/4] Loading model weights ({mode})...")
-        if hasattr(detector, "ensure_model_loaded"):
-            effective_key, model_name = detector.ensure_model_loaded(
-                mode,
-                sample_text=texts[0] if texts else "",
-                on_step=on_step,
-            )
-        else:
-            effective_key = mode
-            model_name = getattr(detector, "model_name", "AI Detector")
-
-        progress.update(task, advance=1, description=f"[3/4] Batch classifying {len(texts)} rows...")
-        batch_task = progress.add_task(
-            f"  Processing rows ({model_name})...",
-            total=len(texts),
-        )
-
-        def on_batch_progress(completed: int, total: int) -> None:
-            progress.update(batch_task, completed=completed)
-
-        preds = detector.score_batch(
-            texts,
+        raw_res = humanizer.humanize_text(
+            raw_text,
             mode=mode,
-            batch_size=batch_size,
-            on_progress=on_batch_progress,
+            strength=strength,
+            on_progress=on_progress,
         )
-        progress.remove_task(batch_task)
+        progress.update(task, completed=4, description="[4/4] Finalizing verification & delta metrics...")
 
-        progress.update(task, advance=1, description="[4/4] Exporting and saving scored dataset...")
-        frame["ai_label"] = [p["label"] for p in preds]
-        frame["ai_probability_pct"] = [p["human_ai_scale"] for p in preds]
+    before_scale = float(raw_res.get("before_scale", 0.0))
+    after_scale = float(raw_res.get("after_scale", 0.0))
+    delta_scale = float(raw_res.get("delta_scale", round(before_scale - after_scale, 2)))
+    before_para_scale = float(raw_res.get("before_paragraph_scale", before_scale))
+    after_para_scale = float(raw_res.get("after_paragraph_scale", after_scale))
 
-    total_rows = len(preds)
-    ai_count = sum(1 for p in preds if p["label"] == "ai")
-    human_count = total_rows - ai_count
-    ai_pct = round((ai_count / total_rows * 100), 2) if total_rows > 0 else 0.0
+    before_conf = raw_res.get("before_confidence")
+    if not isinstance(before_conf, dict) or "grade" not in before_conf:
+        before_conf = get_confidence_status(before_scale)
 
-    batch_payload = {
-        "filename": input_path.name,
-        "summary": {
-            "total_rows": total_rows,
-            "ai_count": ai_count,
-            "human_count": human_count,
-            "ai_percentage": ai_pct,
-            "text_column": col,
-            "mode": mode,
-            "device": detector.device_str,
-        },
-        "preview_rows": frame.head(25).to_dict(orient="records"),
+    after_conf = raw_res.get("after_confidence")
+    if not isinstance(after_conf, dict) or "grade" not in after_conf:
+        after_conf = get_confidence_status(after_scale)
+
+    orig_full = raw_res.get("original_text", raw_text)
+    hum_full = raw_res.get("humanized_text", raw_text)
+
+    paragraphs: list[dict[str, Any]] = []
+    for idx, p in enumerate(raw_res.get("paragraphs") or [], 1):
+        b_sc = float(p.get("before_scale", 0.0))
+        a_sc = float(p.get("after_scale", 0.0))
+        d_sc = float(p.get("delta_scale", round(b_sc - a_sc, 2)))
+        orig_p = p.get("original_text", "")
+        hum_p = p.get("humanized_text", "")
+        is_code = bool(p.get("is_code", False))
+        changed = p.get("changed", orig_p != hum_p)
+        stage_applied = p.get("stage_applied", "code" if is_code else ("full" if changed else "unchanged"))
+
+        b_c = p.get("before_confidence")
+        if not isinstance(b_c, dict) or "grade" not in b_c:
+            b_c = get_confidence_status(b_sc)
+
+        a_c = p.get("after_confidence")
+        if not isinstance(a_c, dict) or "grade" not in a_c:
+            a_c = get_confidence_status(a_sc)
+
+        paragraphs.append({
+            "index": p.get("index", idx),
+            "original_text": orig_p,
+            "humanized_text": hum_p,
+            "before_scale": b_sc,
+            "after_scale": a_sc,
+            "delta_scale": d_sc,
+            "before_label": p.get("before_label", "ai" if b_sc >= 50.0 else "human"),
+            "after_label": p.get("after_label", "ai" if a_sc >= 50.0 else "human"),
+            "before_confidence": b_c,
+            "after_confidence": a_c,
+            "changed": changed,
+            "stage_applied": stage_applied,
+            "is_code": is_code,
+        })
+
+    raw_summary = raw_res.get("summary") or {}
+    words_before = raw_summary.get("word_count_before", len(orig_full.split()) if orig_full else 0)
+    words_after = raw_summary.get("word_count_after", len(hum_full.split()) if hum_full else 0)
+    chars_before = raw_summary.get("char_count_before", len(orig_full))
+    chars_after = raw_summary.get("char_count_after", len(hum_full))
+    total_paras = raw_summary.get("total_paragraphs", len(paragraphs) or 1)
+    modified_paras = raw_summary.get("modified_paragraphs_count", sum(1 for p in paragraphs if p["changed"]))
+    removed_cliches = raw_summary.get("removed_cliches_count", len(raw_res.get("removed_markers", [])))
+
+    summary = {
+        "word_count_before": words_before,
+        "word_count_after": words_after,
+        "char_count_before": chars_before,
+        "char_count_after": chars_after,
+        "total_paragraphs": total_paras,
+        "modified_paragraphs_count": modified_paras,
+        "removed_cliches_count": removed_cliches,
+        "original_ai_paragraphs": raw_summary.get("original_ai_paragraphs", sum(1 for p in paragraphs if p["before_scale"] >= 50.0)),
+        "humanized_ai_paragraphs": raw_summary.get("humanized_ai_paragraphs", sum(1 for p in paragraphs if p["after_scale"] >= 50.0)),
     }
 
-    if report_path:
-        md_content = generate_batch_markdown_report(batch_payload, filename=input_path.name)
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(md_content, encoding="utf-8")
-        if not as_markdown:
-            print(f"Markdown report saved to: {report_path}", file=sys.stderr)
+    result: dict[str, Any] = {
+        "original_text": orig_full,
+        "humanized_text": hum_full,
+        "mode": raw_res.get("mode", mode),
+        "effective_language": raw_res.get("effective_language", "en"),
+        "strength": raw_res.get("strength", strength),
+        "request_id": raw_res.get("request_id", "cli-humanize"),
+        "before_scale": before_scale,
+        "after_scale": after_scale,
+        "delta_scale": delta_scale,
+        "before_paragraph_scale": before_para_scale,
+        "after_paragraph_scale": after_para_scale,
+        "before_confidence": before_conf,
+        "after_confidence": after_conf,
+        "summary": summary,
+        "removed_markers": raw_res.get("removed_markers", []),
+        "paragraphs": paragraphs,
+    }
+    if file_path is not None:
+        result["filename"] = Path(file_path).name
 
-    if as_markdown:
-        print(generate_batch_markdown_report(batch_payload, filename=input_path.name))
+    out_p: Path | None = None
+    if output_path:
+        out_p = Path(output_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(hum_full, encoding="utf-8")
+
+    rep_p: Path | None = None
+    if report_path:
+        rep_p = Path(report_path)
+        rep_p.parent.mkdir(parents=True, exist_ok=True)
+        report_md = generate_humanize_markdown_report(
+            result,
+            source_name=source_name,
+            filename=source_name,
+        )
+        rep_p.write_text(report_md, encoding="utf-8")
+
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif as_markdown:
+        print(generate_humanize_markdown_report(result, source_name=source_name, filename=source_name))
     else:
-        if output_path is None:
-            frame.to_csv(sys.stdout, sep=sep, index=False)
-        else:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            frame.to_csv(output_path, sep=sep, index=False)
-            print(f"Scored dataset saved to: {output_path}", file=sys.stderr)
+        console = Console(file=sys.stdout)
+        console.print("=" * 70)
+        console.print("✨ VeriText AI Text Humanizer — Transformation Summary", style="bold cyan")
+        console.print("=" * 70)
+
+        table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
+        table.add_column("Metric", style="bold", no_wrap=True)
+        table.add_column("Original (Before)", justify="center")
+        table.add_column("Humanized (After)", justify="center")
+        table.add_column("Net Change (Delta)", justify="center")
+
+        # Row 1: Continuous AI Probability
+        delta_prob_str = f"[bold green]-{delta_scale:.2f}%[/bold green]" if delta_scale >= 0 else f"[bold red]+{-delta_scale:.2f}%[/bold red]"
+        table.add_row(
+            "Continuous AI Probability",
+            f"{before_scale:.2f}%",
+            f"{after_scale:.2f}%",
+            delta_prob_str,
+        )
+
+        # Row 2: Confidence Grade
+        b_grade = before_conf.get("grade", "N/A")
+        a_grade = after_conf.get("grade", "N/A")
+        grade_delta = "[bold green]Improved[/bold green]" if b_grade != a_grade else "[dim]Unchanged[/dim]"
+        table.add_row(
+            "Confidence Grade",
+            str(b_grade),
+            str(a_grade),
+            grade_delta,
+        )
+
+        # Row 3: Paragraph-Weighted AI
+        para_delta = round(before_para_scale - after_para_scale, 2)
+        para_delta_str = f"[bold green]-{para_delta:.2f}%[/bold green]" if para_delta >= 0 else f"[bold red]+{-para_delta:.2f}%[/bold red]"
+        table.add_row(
+            "Paragraph-Weighted AI",
+            f"{before_para_scale:.2f}%",
+            f"{after_para_scale:.2f}%",
+            para_delta_str,
+        )
+
+        # Row 4: Stylistic Markers
+        markers_delta_str = f"[bold green]-{removed_cliches} scrubbed[/bold green]" if removed_cliches > 0 else "[dim]0 scrubbed[/dim]"
+        table.add_row(
+            "Stylistic Markers",
+            f"{removed_cliches} detected",
+            "0 detected",
+            markers_delta_str,
+        )
+
+        # Row 5: Changed Paragraphs
+        mod_pct = (modified_paras / max(1, total_paras)) * 100
+        table.add_row(
+            "Changed Paragraphs",
+            f"0 / {total_paras}",
+            f"{modified_paras} / {total_paras}",
+            f"{mod_pct:.1f}% modified",
+        )
+
+        # Row 6: Total Words / Chars
+        word_delta = words_after - words_before
+        table.add_row(
+            "Total Words / Chars",
+            f"{words_before} / {chars_before}",
+            f"{words_after} / {chars_after}",
+            f"{word_delta:+d} words",
+        )
+
+        console.print(table)
+        console.print("-" * 70)
+        console.print("[bold]Humanized Text Output:[/bold]")
+        console.print("-" * 70)
+        print(hum_full)
+        console.print("=" * 70)
+
+        if out_p:
+            print(f"Humanized text saved to: {out_p}")
+        if rep_p:
+            print(f"Markdown report saved to: {rep_p}")
+
     return 0
 
 
@@ -593,9 +757,24 @@ def main() -> int:
             log_level=log_level,
         )
 
-    show_progress = not args.log and sys.stderr.isatty()
+    show_progress = not args.log and sys.stderr.isatty() and not (args.json or args.markdown)
 
     device = None if args.device == "auto" else args.device
+
+    if args.humanize:
+        return humanize_cli(
+            text=args.text,
+            file_path=Path(args.file) if args.file is not None else None,
+            mode=args.mode,
+            strength=args.strength,
+            device=device,
+            output_path=args.output,
+            as_json=args.json,
+            as_markdown=args.markdown,
+            report_path=args.report_md,
+            show_progress=show_progress,
+        )
+
     detector = ModernAIDetector(device=device)
 
     if args.text is not None:
@@ -616,18 +795,6 @@ def main() -> int:
             args.json,
             as_markdown=args.markdown,
             report_path=args.report_md,
-            show_progress=show_progress,
-        )
-    elif args.input is not None:
-        return score_dataset(
-            detector,
-            Path(args.input),
-            Path(args.output) if args.output else None,
-            args.text_column,
-            args.mode,
-            args.batch_size,
-            report_path=args.report_md,
-            as_markdown=args.markdown,
             show_progress=show_progress,
         )
     return 0

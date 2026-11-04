@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import os
 
+from .preprocessing import split_paragraphs
+
 
 def extract_text_from_file(filename: str, content: bytes) -> tuple[str, list[str]]:
     """Extract full text content and a list of paragraphs from .md, .docx, .pdf, and .txt files."""
@@ -47,7 +49,7 @@ def extract_text_from_file(filename: str, content: bytes) -> tuple[str, list[str
     if not full_text:
         raise ValueError("Document contains no readable text.")
 
-    raw_paras = [p.strip() for p in full_text.split("\n\n") if len(p.strip()) > 20]
+    raw_paras = [p.strip() for p in split_paragraphs(full_text) if len(p.strip()) > 20]
     if len(raw_paras) <= 1:
         lines = [line.strip() for line in full_text.split("\n") if len(line.strip()) > 35]
         raw_paras = lines if lines else [full_text]

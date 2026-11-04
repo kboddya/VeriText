@@ -136,3 +136,90 @@ def get_confidence_status(ai_percentage: float) -> dict:
             "badge_class": "bg-rose-500/10 text-rose-400 border-rose-500/30",
         }
 
+
+def is_code_or_structure(paragraph: str) -> bool:
+    """
+    Determine if a paragraph represents a code block, script, command session,
+    or structured markdown table that must be protected from neural paraphrasing.
+    """
+    s = paragraph.strip()
+    if not s:
+        return False
+
+    # 1. Fenced code block (``` or ~~~)
+    if s.startswith(('```', '~~~')):
+        return True
+
+    lines = [l for l in s.splitlines() if l.strip()]
+    if not lines:
+        return False
+
+    # 2. Markdown Table
+    if len(lines) >= 2 and all(l.strip().startswith('|') and l.strip().endswith('|') for l in lines):
+        if any(re.match(r'^\|(?:\s*:?-+:?\s*\|)+$', l.strip()) for l in lines):
+            return True
+
+    # 3. Indented code block (Markdown 4 spaces or tab on all non-empty lines)
+    if len(lines) >= 1 and all(l.startswith(('    ', '\t')) for l in s.splitlines() if l.strip()):
+        return True
+
+    # 4. Command line sessions / Shell prompts / package manager commands
+    shell_prefixes = ('$', '>>>', '#!', 'npm ', 'pip ', 'docker ', 'git ', 'curl ', 'python ', 'uvicorn ')
+    if all(l.strip().startswith(shell_prefixes) for l in lines):
+        return True
+
+    # 5. Program code signatures (Python, JS/TS, C/C++, Java, Go, Rust, SQL, HTML)
+    code_keywords = (
+        'def ', 'class ', 'import ', 'from ', 'return ', 'function ', 'function(',
+        'const ', 'let ', 'var ', 'async ', 'await ', 'public ', 'private ',
+        'protected ', 'void ', 'int ', 'float ', 'double ', 'namespace ',
+        '#include ', '#define ', 'using namespace ', 'package ', 'interface ',
+        'SELECT ', 'INSERT ', 'UPDATE ', 'DELETE ', 'FROM ', 'WHERE ',
+        '<!DOCTYPE', '<html', '<script', '</'
+    )
+    keyword_matches = sum(1 for kw in code_keywords if any(line.strip().startswith(kw) or f' {kw}' in line for line in lines))
+    semicolons = sum(1 for l in lines if l.strip().endswith(';'))
+    curly_open = s.count('{')
+    curly_close = s.count('}')
+
+    if keyword_matches >= 2:
+        return True
+    if len(lines) >= 2 and semicolons >= len(lines) * 0.6:
+        return True
+    if curly_open >= 1 and curly_close >= 1 and (keyword_matches >= 1 or semicolons >= 1):
+        return True
+
+    return False
+
+
+def split_paragraphs(text: str) -> list[str]:
+    """
+    Split text into distinct non-empty paragraphs.
+    Preserves multi-line Markdown code blocks (``` or ~~~) as single atomic paragraphs,
+    even if they contain internal blank lines.
+    """
+    if not text:
+        return []
+
+    # Match fenced code blocks (``` or ~~~)
+    fenced_re = re.compile(r'(?ms)^[ \t]*(```|~~~)[^\n]*\n.*?(?:^[ \t]*\1[ \t]*$|\Z)')
+    blocks: list[str] = []
+
+    def _repl(m: re.Match) -> str:
+        idx = len(blocks)
+        blocks.append(m.group(0).strip())
+        return f"\n\n__VERITEXT_FENCED_BLOCK_{idx}__\n\n"
+
+    masked = fenced_re.sub(_repl, text)
+    raw = [p.strip() for p in re.split(r'\n\s*\n+', masked) if p.strip()]
+
+    result: list[str] = []
+    for p in raw:
+        m = re.match(r'^__VERITEXT_FENCED_BLOCK_(\d+)__$', p)
+        if m:
+            result.append(blocks[int(m.group(1))])
+        else:
+            result.append(p)
+    return result
+
+

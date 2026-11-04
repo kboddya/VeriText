@@ -9,7 +9,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoModelForSeq2SeqLM,
+    AutoTokenizer,
+)
 
 logger = logging.getLogger("veritext.cache")
 
@@ -61,9 +65,10 @@ def load_offline_first(
     device: torch.device,
     on_step: Optional[Callable[[str], None]] = None,
     fallback_id: Optional[str] = None,
+    model_cls: object = AutoModelForSequenceClassification,
 ) -> tuple[object, object, str]:
     """
-    Load tokenizer and classification model offline-first.
+    Load tokenizer and classification/seq2seq model offline-first.
     1. Try to load from local cache (local_files_only=True) without network.
     2. If successful:
        - If more than 7 days passed, do a non-blocking check on Hugging Face.
@@ -86,7 +91,10 @@ def load_offline_first(
         tokenizer = AutoTokenizer.from_pretrained(model_id, local_files_only=True)
         if on_step:
             on_step(f"Loading model weights ({model_name})...")
-        model = AutoModelForSequenceClassification.from_pretrained(model_id, local_files_only=True)
+        if hasattr(model_cls, "from_pretrained"):
+            model = model_cls.from_pretrained(model_id, local_files_only=True)
+        else:
+            model = model_cls()
         if on_step:
             on_step(f"Transferring weights to device ({device})...")
         model.to(device)
@@ -119,7 +127,10 @@ def load_offline_first(
         tokenizer = AutoTokenizer.from_pretrained(model_id, local_files_only=False)
         if on_step:
             on_step(f"Loading model weights ({model_name})...")
-        model = AutoModelForSequenceClassification.from_pretrained(model_id, local_files_only=False)
+        if hasattr(model_cls, "from_pretrained"):
+            model = model_cls.from_pretrained(model_id, local_files_only=False)
+        else:
+            model = model_cls()
         if on_step:
             on_step(f"Transferring weights to device ({device})...")
         model.to(device)
@@ -133,7 +144,9 @@ def load_offline_first(
             logger.info("Switching to fallback model: %s", fallback_id)
             if on_step:
                 on_step(f"Switching to fallback model ({fallback_id.split('/')[-1]})...")
-            return load_offline_first(fallback_id, device, on_step=on_step, fallback_id=None)
+            return load_offline_first(
+                fallback_id, device, on_step=on_step, fallback_id=None, model_cls=model_cls
+            )
         raise RuntimeError(
             f"Failed to load model '{model_id}' (local cache not found, "
             f"and Hugging Face download failed: {remote_err})"

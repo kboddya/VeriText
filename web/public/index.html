@@ -59,7 +59,7 @@
     <!-- Main Container -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-        <!-- Top Mode Switcher (Unified Inspector / Batch CSV) -->
+        <!-- Top Mode Switcher -->
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
             <div class="flex space-x-3">
                 <button id="view-btn-unified" onclick="switchView('unified')" class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white shadow-lg shadow-blue-600/20">
@@ -68,11 +68,11 @@
                     </svg>
                     Hybrid Text & Document Inspector
                 </button>
-                <button id="view-btn-batch" onclick="switchView('batch')" class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition text-slate-400 hover:text-white hover:bg-slate-900/60">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                <button id="view-btn-humanize" onclick="switchView('humanize')" class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition text-slate-400 hover:text-white hover:bg-slate-900/60">
+                    <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
-                    Batch Datasets (CSV / TSV)
+                    AI Text Humanizer
                 </button>
             </div>
             <div class="text-xs text-slate-500 hidden sm:block">
@@ -250,6 +250,12 @@
                                 <span id="active-device-badge" class="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-emerald-400">Device: MPS</span>
                             </div>
                             <div class="flex items-center gap-2">
+                                <button id="btn-humanize-from-inspector" onclick="transferTextToHumanizer()" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/50 text-xs font-semibold transition shadow-sm" title="Transfer text to AI Humanizer">
+                                    <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                    </svg>
+                                    <span>✨ Humanize Entire Text</span>
+                                </button>
                                 <button id="btn-export-unified-md" onclick="downloadUnifiedMarkdownReport()" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 active:bg-blue-600/40 text-blue-300 border border-blue-500/30 hover:border-blue-500/50 text-xs font-semibold transition shadow-sm" title="Download detailed verification report in Markdown (.md) format">
                                     <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -394,103 +400,310 @@
         </div>
 
         <!-- ======================================================== -->
-        <!-- VIEW 2: BATCH DATASETS (CSV / TSV)                       -->
+        <!-- VIEW 2: AI TEXT HUMANIZER WORKSPACE                      -->
         <!-- ======================================================== -->
-        <div id="view-batch" class="hidden space-y-6">
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-                <!-- Dropzone -->
-                <div id="file-dropzone" onclick="document.getElementById('file-input').click()" class="border-2 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/60 rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center">
-                    <input type="file" id="file-input" accept=".csv,.tsv" class="hidden" onclick="event.stopPropagation()" onchange="handleFileSelected(event)">
-                    <div class="w-12 h-12 rounded-full bg-blue-600/10 text-blue-400 flex items-center justify-center mb-3 pointer-events-none">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                        </svg>
-                    </div>
-                    <span id="batch-dropzone-text" class="text-sm font-medium text-slate-200 pointer-events-none">Click to select a .csv / .tsv file or drag and drop it here</span>
-                    <span class="text-xs text-slate-500 mt-1 pointer-events-none">Supports datasets of any size (up to 250 MB)</span>
-                </div>
+        <div id="view-humanize" class="hidden space-y-8">
 
-                <!-- Batch configuration -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-400 mb-1">Target Text Column:</label>
-                        <input type="text" id="batch-text-column" placeholder="Leave empty for auto-detection" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-400 mb-1">Model Selection:</label>
-                        <select id="batch-mode-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
-                            <option value="auto" selected>Auto (Language-based)</option>
-                            <option value="ru">Russian (RuBERT)</option>
-                            <option value="en">English (DeBERTa-v3)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-400 mb-1">Batch Size:</label>
-                        <input type="number" id="batch-size-input" value="32" min="1" max="128" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-blue-500">
-                    </div>
-                </div>
+            <!-- Humanizer Input Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
 
-                <!-- Run & Abort batch buttons -->
-                <div class="flex items-center gap-3">
-                    <button id="btn-run-batch" onclick="submitBatchAnalysis()" disabled class="flex-1 py-3 px-4 bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-500 text-white font-medium rounded-lg text-sm transition shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2">
-                        <span id="btn-run-batch-label">Select a file to process</span>
-                    </button>
-                    <button id="btn-abort-batch" onclick="abortAnalysis('batch')" class="hidden px-4 py-3 bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-400 border border-rose-500/30 hover:border-rose-500/50 rounded-lg text-sm font-medium transition flex items-center gap-1.5 shadow-sm" title="Cancel batch scoring">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                        <span>Cancel</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Batch Results Section -->
-            <div id="batch-results-container" class="hidden space-y-6">
-                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                        <span class="text-xs text-slate-400 block mb-1">Total Rows</span>
-                        <span id="batch-total-rows" class="text-2xl font-bold font-mono text-slate-100">0</span>
-                    </div>
-                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                        <span class="text-xs text-rose-400 block mb-1">AI-Generated</span>
-                        <div class="flex items-baseline gap-2">
-                            <span id="batch-ai-count" class="text-2xl font-bold font-mono text-rose-400">0</span>
-                            <span id="batch-ai-pct" class="text-xs text-rose-500 font-mono">(0%)</span>
+                <!-- Input Mode Switcher (Text vs File) & Sample Loaders -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="inline-flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium">
+                            <button id="humanize-mode-btn-text" type="button" onclick="setHumanizeInputMode('text')" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition shadow-sm">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                                Direct Text Input
+                            </button>
+                            <button id="humanize-mode-btn-file" type="button" onclick="setHumanizeInputMode('file')" class="flex items-center gap-2 px-4 py-2 rounded-lg text-slate-400 hover:text-white transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                                </svg>
+                                Document File Upload
+                            </button>
+                        </div>
+                        <div id="humanize-active-engine-pill" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-300">
+                            <span id="humanize-engine-dot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+                            <span id="humanize-engine-label">Generator: Detecting...</span>
                         </div>
                     </div>
-                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                        <span class="text-xs text-emerald-400 block mb-1">Human-Written</span>
-                        <div class="flex items-baseline gap-2">
-                            <span id="batch-human-count" class="text-2xl font-bold font-mono text-emerald-400">0</span>
-                            <span id="batch-human-pct" class="text-xs text-emerald-500 font-mono">(0%)</span>
+
+                    <!-- Quick AI Samples -->
+                    <div id="humanize-quick-samples-container" class="flex flex-wrap items-center gap-1.5">
+                        <span class="text-xs text-slate-500 mr-1 hidden sm:inline">AI Samples:</span>
+                        <button type="button" onclick="loadHumanizeSample('ru_ai')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                            RU AI
+                        </button>
+                        <button type="button" onclick="loadHumanizeSample('en_ai')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">
+                            EN AI
+                        </button>
+                        <button type="button" onclick="loadHumanizeSample('cliche')" class="text-xs bg-slate-800 hover:bg-slate-700 text-indigo-300/90 border border-indigo-500/20 px-2.5 py-1 rounded transition" title="Cliché Benchmark (Russian synthetic markers)">
+                            Cliché Benchmark
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PANEL 1: Direct Text Input Mode -->
+                <div id="humanize-input-panel-text" class="space-y-2">
+                    <div class="relative">
+                        <textarea id="humanize-text-input" rows="8" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm leading-relaxed transition resize-y font-normal" placeholder="Paste or type synthetic AI text (Russian or English) to scrub clichés and humanize..."></textarea>
+                        
+                        <div class="flex items-center justify-between text-xs text-slate-400 mt-2 font-mono">
+                            <span id="humanize-char-word-count">Characters: 0 | Words: 0</span>
+                            <button type="button" onclick="clearHumanizeInput()" class="text-slate-400 hover:text-slate-200 transition">Clear Text</button>
                         </div>
                     </div>
-                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col gap-2 justify-center">
-                        <button id="btn-download-csv" onclick="downloadScoredCSV()" class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+                </div>
+
+                <!-- PANEL 2: Document File Upload Mode -->
+                <div id="humanize-input-panel-file" class="hidden space-y-4">
+                    <div id="humanize-dropzone" onclick="document.getElementById('humanize-file-input').click()" class="border-2 border-dashed border-slate-800 hover:border-indigo-500/60 bg-slate-950/60 hover:bg-slate-950/90 rounded-2xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-3">
+                        <input type="file" id="humanize-file-input" accept=".md,.markdown,.docx,.pdf,.txt" class="hidden" onclick="event.stopPropagation()" onchange="handleHumanizeFileSelected(event)">
+                        <div class="w-14 h-14 rounded-2xl bg-indigo-600/10 text-indigo-400 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/10 pointer-events-none">
+                            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                        </div>
+                        <div class="text-center pointer-events-none">
+                            <span id="humanize-dropzone-label" class="text-sm font-semibold text-slate-200 block">Click to select or drag and drop a document file here</span>
+                            <span id="humanize-dropzone-sublabel" class="text-xs text-slate-400 block mt-1">Supported formats: <span class="text-indigo-400 font-mono">.pdf, .docx, .md, .txt</span></span>
+                        </div>
+                    </div>
+
+                    <!-- Selected File Banner -->
+                    <div id="humanize-selected-file-badge" class="hidden flex items-center justify-between bg-indigo-950/40 border border-indigo-500/40 rounded-xl px-4 py-3 text-xs">
+                        <div class="flex items-center gap-3 text-indigo-300">
+                            <span class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-mono font-bold text-[11px] uppercase" id="humanize-selected-file-ext">PDF</span>
+                            <div>
+                                <span id="humanize-selected-file-name" class="font-semibold text-white block">document.pdf</span>
+                                <span id="humanize-selected-file-size" class="text-slate-400 font-mono text-[11px]">0 KB</span>
+                            </div>
+                        </div>
+                        <button type="button" onclick="clearSelectedHumanizeFile()" class="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-900 transition" title="Remove attached file">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Execution Progress Status Card -->
+                <div id="humanize-live-progress-card" class="hidden bg-slate-950 p-4 rounded-xl border border-indigo-500/40 space-y-2.5 shadow-xl">
+                    <div class="flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2.5">
+                            <span class="relative flex h-2.5 w-2.5">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+                            </span>
+                            <span id="humanize-step-badge" class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-mono font-bold text-[11px]">Step 1/4</span>
+                            <span id="humanize-para-badge" class="hidden px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono font-bold text-[11px]">Para 0/0</span>
+                            <span id="humanize-progress-message" class="text-slate-200 font-medium truncate max-w-[280px] sm:max-w-md">Scrubbing AI clichés & generating candidate paraphrases...</span>
+                        </div>
+                        <span id="humanize-progress-pct" class="font-mono font-bold text-indigo-400 text-sm">10%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                        <div id="humanize-progress-fill" class="bg-gradient-to-r from-indigo-600 via-purple-500 to-emerald-400 h-2 rounded-full transition-all duration-300 ease-out" style="width: 10%;"></div>
+                    </div>
+                </div>
+
+                <!-- Controls: Mode Selector + Strength Selector + CTA -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-4 border-t border-slate-800">
+                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:flex-1">
+                        <div class="sm:w-64">
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Language Mode:</label>
+                            <select id="humanize-mode-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-indigo-500">
+                                <option value="auto" selected>Auto: Smart Language Detector (RU ↔ EN)</option>
+                                <option value="ru">Russian: RuT5-Base Paraphraser</option>
+                                <option value="en">English: ChatGPT Paraphraser on T5-base</option>
+                            </select>
+                        </div>
+                        <div class="sm:w-64">
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Transformation Strength:</label>
+                            <select id="humanize-strength-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-indigo-500">
+                                <option value="light">Light: 2 candidates, subtle adjustments</option>
+                                <option value="balanced" selected>Balanced: 3 candidates, recommended</option>
+                                <option value="aggressive">Aggressive: 4 candidates, strong burstiness</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <button id="btn-run-humanize" onclick="submitHumanizeAnalysis()" class="flex-1 sm:flex-initial py-3 px-8 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                            <span id="btn-run-humanize-label">✨ Run AI Humanization</span>
+                        </button>
+                        <button id="btn-abort-humanize" onclick="abortHumanizeAnalysis()" class="hidden px-4 py-3 bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-400 border border-rose-500/30 hover:border-rose-500/50 rounded-xl text-sm font-medium transition flex items-center gap-1.5" title="Abort in-flight humanization">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
-                            Download Scored CSV
-                        </button>
-                        <button id="btn-download-batch-md" onclick="downloadBatchMarkdownReport()" class="w-full py-2 px-3 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 hover:border-blue-500/50 font-semibold rounded-lg text-xs transition flex items-center justify-center gap-2 shadow-sm" title="Download batch summary report in Markdown (.md)">
-                            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                            </svg>
-                            Download Report (.md)
+                            <span>Cancel</span>
                         </button>
                     </div>
                 </div>
 
-                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
-                    <span class="text-xs font-semibold text-slate-300 block">Dataset Preview (First 25 Rows):</span>
-                    <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-800 rounded-lg">
-                        <table class="w-full text-left text-xs divide-y divide-slate-800">
-                            <thead id="batch-table-head" class="bg-slate-950 text-slate-400 sticky top-0 font-medium"></thead>
-                            <tbody id="batch-table-body" class="divide-y divide-slate-800 text-slate-300 font-mono"></tbody>
-                        </table>
+            </div>
+
+            <!-- Empty State Placeholder -->
+            <div id="humanize-empty-state" class="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center min-h-[260px]">
+                <div class="w-14 h-14 rounded-full bg-indigo-950/80 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-3">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+                <h3 class="text-sm font-medium text-slate-300">Ready to Humanize</h3>
+                <p class="text-xs text-slate-500 max-w-md mt-1">Paste AI-generated text or upload a document to scrub formulaic markers, introduce burstiness variation, and verify score reduction via detector-in-the-loop critic.</p>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- HUMANIZER RESULTS DASHBOARD                              -->
+            <!-- ======================================================== -->
+            <div id="humanize-results-card" class="hidden space-y-6">
+
+                <!-- 1. Executive Verdict & Delta Banner -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-800">
+                        <div>
+                            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold block">Humanization Verdict & Reduction</span>
+                            
+                            <div class="mt-3 flex flex-wrap items-center gap-4">
+                                <!-- Before Score & Grade -->
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs text-slate-400">Before:</span>
+                                    <span id="humanize-before-score" class="text-2xl sm:text-3xl font-black font-mono text-rose-400">0.0%</span>
+                                    <span id="humanize-before-grade" class="px-2 py-0.5 rounded text-[11px] font-bold border border-rose-500/30 text-rose-300 bg-rose-500/10">Grade D</span>
+                                </div>
+
+                                <span class="text-slate-600 text-lg font-bold">→</span>
+
+                                <!-- After Score & Grade -->
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs text-slate-400">After:</span>
+                                    <span id="humanize-after-score" class="text-2xl sm:text-3xl font-black font-mono text-emerald-400">0.0%</span>
+                                    <span id="humanize-after-grade" class="px-2 py-0.5 rounded text-[11px] font-bold border border-emerald-500/30 text-emerald-300 bg-emerald-500/10">Grade A</span>
+                                </div>
+
+                                <!-- Net Delta Badge -->
+                                <div id="humanize-delta-badge" class="px-3.5 py-1.5 rounded-full text-xs font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm">
+                                    <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                                    </svg>
+                                    <span>-0.0% AI Reduction</span>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-2 mt-2.5">
+                                <p id="humanize-verdict-desc" class="text-xs text-slate-300 max-w-2xl leading-relaxed">Text successfully transformed: formulaic synthetic markers purged, sentence cadence varied, and AI score reduced.</p>
+                                <span id="humanize-generator-result-badge" class="hidden items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-medium"></span>
+                            </div>
+                        </div>
+
+                        <!-- Action Toolbar -->
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button id="btn-copy-humanized" onclick="copyHumanizedText()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition" title="Copy humanized text to clipboard">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                                </svg>
+                                <span>Copy Text</span>
+                            </button>
+                            <button id="btn-download-humanized-txt" onclick="downloadHumanizedTextFile('txt')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition" title="Download transformed text as .txt">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                                <span>.txt</span>
+                            </button>
+                            <button id="btn-download-humanized-md" onclick="downloadHumanizedTextFile('md')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition" title="Download transformed text as .md">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                                <span>.md</span>
+                            </button>
+                            <button id="btn-download-humanize-report" onclick="downloadHumanizeMarkdownReport()" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/50 text-xs font-semibold transition shadow-sm" title="Download audit report in Markdown format">
+                                <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                                <span>Download Report (.md)</span>
+                            </button>
+                            <button id="btn-reverify-inspector" onclick="reverifyInInspector()" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-sm" title="Re-Verify humanized text inside the Hybrid Inspector">
+                                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <span>Re-Verify in Inspector</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- KPI Statistics Row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 text-xs font-mono">
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 block text-[11px]">Modified Paragraphs</span>
+                            <span id="humanize-stat-modified-paras" class="text-indigo-400 font-semibold text-sm">0 / 0</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 block text-[11px]">Removed Clichés & Markers</span>
+                            <span id="humanize-stat-removed-cliches" class="text-amber-400 font-semibold text-sm">0 scrubbed</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 block text-[11px]">Word Count (Before → After)</span>
+                            <span id="humanize-stat-words" class="text-slate-200 font-semibold text-sm">0 → 0</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 block text-[11px]">Char Count (Before → After)</span>
+                            <span id="humanize-stat-chars" class="text-slate-200 font-semibold text-sm">0 → 0</span>
+                        </div>
                     </div>
                 </div>
+
+                <!-- 2. Side-by-Side Comparison Viewer -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Left: Original Text -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+                        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                                <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider">Original AI Input</h4>
+                            </div>
+                            <span id="humanize-original-score-badge" class="text-xs font-mono font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">AI</span>
+                        </div>
+                        <div id="humanize-original-viewer" class="bg-slate-950 p-4 rounded-xl border border-rose-500/30 text-xs text-slate-200 leading-relaxed max-h-[420px] overflow-y-auto whitespace-pre-wrap font-normal"></div>
+                    </div>
+
+                    <!-- Right: Humanized Text -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+                        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                                <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider">Humanized Result</h4>
+                            </div>
+                            <span id="humanize-result-score-badge" class="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Human</span>
+                        </div>
+                        <div id="humanize-result-viewer" class="bg-slate-950 p-4 rounded-xl border border-emerald-500/30 text-xs text-slate-100 leading-relaxed max-h-[420px] overflow-y-auto whitespace-pre-wrap font-normal"></div>
+                    </div>
+                </div>
+
+                <!-- 3. Paragraph-by-Paragraph Breakdown List -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                        <div>
+                            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                                <span>Paragraph Transformation Breakdown</span>
+                                <span id="humanize-paras-count-badge" class="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-xs font-mono font-normal">0 paragraphs</span>
+                            </h3>
+                            <p class="text-xs text-slate-400">Detailed before vs. after comparison and critic scoring per paragraph</p>
+                        </div>
+                    </div>
+
+                    <!-- Paragraph Breakdown Cards Container -->
+                    <div id="humanize-paragraphs-container" class="space-y-3 max-h-[650px] overflow-y-auto pr-2">
+                        <!-- Dynamically populated via JS -->
+                    </div>
+                </div>
+
             </div>
+
         </div>
 
     </main>

@@ -13,3 +13,9 @@ outputs/
 .venv/
 venv/
 .DS_Store
+.agents/
+.cache/
+ORIGINAL_REQUEST.md
+PROJECT.md
+TEST_INFRA.md
+TEST_READY.md

@@ -1,4 +1,4 @@
-// VeriText Hybrid AI Detector Frontend Application Logic
+// VeriText Hybrid AI Detector & Text Humanizer Frontend Application Logic
 
 let selectedUnifiedFile = null;
 let lastUnifiedResult = null;
@@ -6,12 +6,13 @@ let currentParagraphFilter = 'all'; // 'all', 'ai', 'human'
 let currentParagraphSort = 'original'; // 'original', 'desc', 'asc'
 let currentSourceMode = 'text'; // 'text' or 'file'
 
-let selectedBatchFile = null;
-let lastBatchResult = null;
+let lastHumanizeResult = null;
+let selectedHumanizeFile = null;
+let currentHumanizeInputMode = 'text'; // 'text' or 'file'
 
 const activeRequests = {
     unified: { controller: null, id: null },
-    batch: { controller: null, id: null },
+    humanize: { controller: null, id: null },
 };
 
 function generateRequestId() {
@@ -62,6 +63,12 @@ const SAMPLES = {
     us_constitution: "We the People of the United States, in Order to form a more perfect Union, establish Justice, insure domestic Tranquility, provide for the common defence, promote the general Welfare, and secure the Blessings of Liberty to ourselves and our Posterity, do ordain and establish this Constitution for the United States of America. All legislative Powers herein granted shall be vested in a Congress of the United States, which shall consist of a Senate and House of Representatives. The House of Representatives shall be composed of Members chosen every second Year by the People of the several States, and the Electors in each State shall have the Qualifications requisite for Electors of the most numerous Branch of the State Legislature.",
 };
 
+const HUMANIZE_SAMPLES = {
+    ru_ai: "Важно отметить, что в современном мире искусственный интеллект играет ключевую роль в обработке данных. Таким образом, можно сделать вывод, что интеграция алгоритмов является неотъемлемой частью технологического прогресса. Подводя итоги, следует подчеркнуть необходимость дальнейших исследований в этой динамично развивающейся области.",
+    en_ai: "In today's fast-paced digital world, it is important to remember that artificial intelligence has become a cornerstone of technology. Furthermore, it is worth noting that machine learning models provide sophisticated automation tools. In conclusion, navigating this complex landscape requires continuous engineering vigilance.",
+    cliche: "Важно отметить, что в конечном итоге необходимо подчеркнуть значимость данного подхода. Таким образом, можно сделать вывод, что это играет ключевую роль. Подводя итоги, следует отметить дальнейшие перспективы и комплексное развитие системы.",
+};
+
 // ----------------------------------------------------
 // INITIALIZATION
 // ----------------------------------------------------
@@ -71,26 +78,27 @@ document.addEventListener('DOMContentLoaded', () => {
     initTextareaCounter();
 });
 
-// Switch between Unified view and Batch CSV view
+// Switch view logic
 function switchView(view) {
     const viewUnified = document.getElementById('view-unified');
-    const viewBatch = document.getElementById('view-batch');
+    const viewHumanize = document.getElementById('view-humanize');
     const btnUnified = document.getElementById('view-btn-unified');
-    const btnBatch = document.getElementById('view-btn-batch');
+    const btnHumanize = document.getElementById('view-btn-humanize');
 
     const activeClass = "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white shadow-lg shadow-blue-600/20";
+    const activeHumanizeClass = "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition bg-indigo-600 text-white shadow-lg shadow-indigo-600/20";
     const inactiveClass = "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition text-slate-400 hover:text-white hover:bg-slate-900/60";
 
-    if (view === 'unified') {
-        viewUnified.classList.remove('hidden');
-        viewBatch.classList.add('hidden');
-        btnUnified.className = activeClass;
-        btnBatch.className = inactiveClass;
+    if (view === 'humanize') {
+        if (viewUnified) viewUnified.classList.add('hidden');
+        if (viewHumanize) viewHumanize.classList.remove('hidden');
+        if (btnUnified) btnUnified.className = inactiveClass;
+        if (btnHumanize) btnHumanize.className = activeHumanizeClass;
     } else {
-        viewUnified.classList.add('hidden');
-        viewBatch.classList.remove('hidden');
-        btnUnified.className = inactiveClass;
-        btnBatch.className = activeClass;
+        if (viewUnified) viewUnified.classList.remove('hidden');
+        if (viewHumanize) viewHumanize.classList.add('hidden');
+        if (btnUnified) btnUnified.className = activeClass;
+        if (btnHumanize) btnHumanize.className = inactiveClass;
     }
 }
 
@@ -116,6 +124,20 @@ async function initHealthCheck() {
             } else {
                 deviceLabel.innerHTML = `<span class="text-blue-400 font-semibold">CPU:</span> ${data.device_name || 'Active'}`;
             }
+
+            // Update Humanizer engine badge if present
+            const hEngineLabel = document.getElementById('humanize-engine-label');
+            const hEngineDot = document.getElementById('humanize-engine-dot');
+            if (hEngineLabel && data.humanizer_info) {
+                const info = data.humanizer_info;
+                if (info.active) {
+                    hEngineLabel.innerHTML = `Generator: <span class="text-emerald-400 font-semibold">${escapeHtml(info.provider)}</span> (Local T5 bypassed)`;
+                    if (hEngineDot) hEngineDot.className = "w-2 h-2 rounded-full bg-emerald-400";
+                } else {
+                    hEngineLabel.innerHTML = `Generator: <span class="text-indigo-400 font-semibold">${escapeHtml(info.provider || 'Local T5')}</span>`;
+                    if (hEngineDot) hEngineDot.className = "w-2 h-2 rounded-full bg-indigo-400";
+                }
+            }
         } catch (err) {
             statusDot.className = "relative inline-flex rounded-full h-2 w-2 bg-rose-500";
             statusPing.className = "hidden";
@@ -132,14 +154,28 @@ function initTextareaCounter() {
     const textarea = document.getElementById('text-input');
     const counter = document.getElementById('char-word-count');
 
-    function update() {
-        const val = textarea.value.trim();
-        const chars = val.length;
-        const words = val ? val.split(/\s+/).length : 0;
-        counter.textContent = `Characters: ${chars} | Words: ${words}`;
+    if (textarea && counter) {
+        function update() {
+            const val = textarea.value.trim();
+            const chars = val.length;
+            const words = val ? val.split(/\s+/).length : 0;
+            counter.textContent = `Characters: ${chars} | Words: ${words}`;
+        }
+        textarea.addEventListener('input', update);
     }
 
-    textarea.addEventListener('input', update);
+    const humanizeTextarea = document.getElementById('humanize-text-input');
+    const humanizeCounter = document.getElementById('humanize-char-word-count');
+
+    if (humanizeTextarea && humanizeCounter) {
+        function updateHumanize() {
+            const val = humanizeTextarea.value.trim();
+            const chars = val.length;
+            const words = val ? val.split(/\s+/).length : 0;
+            humanizeCounter.textContent = `Characters: ${chars} | Words: ${words}`;
+        }
+        humanizeTextarea.addEventListener('input', updateHumanize);
+    }
 }
 
 function loadSample(type) {
@@ -149,6 +185,17 @@ function loadSample(type) {
     textarea.value = SAMPLES[type] || '';
     textarea.dispatchEvent(new Event('input'));
     showToast(`Loaded sample: ${type.toUpperCase()}`, 'info');
+}
+
+function loadHumanizeSample(type) {
+    setHumanizeInputMode('text');
+    clearSelectedHumanizeFile();
+    const textarea = document.getElementById('humanize-text-input');
+    if (textarea) {
+        textarea.value = HUMANIZE_SAMPLES[type] || '';
+        textarea.dispatchEvent(new Event('input'));
+        showToast(`Loaded sample: ${type.toUpperCase()}`, 'info');
+    }
 }
 
 function setAnalysisSourceMode(mode) {
@@ -184,6 +231,39 @@ function setAnalysisSourceMode(mode) {
     }
 }
 
+function setHumanizeInputMode(mode) {
+    currentHumanizeInputMode = mode;
+    const btnText = document.getElementById('humanize-mode-btn-text');
+    const btnFile = document.getElementById('humanize-mode-btn-file');
+    const panelText = document.getElementById('humanize-input-panel-text');
+    const panelFile = document.getElementById('humanize-input-panel-file');
+    const samplesContainer = document.getElementById('humanize-quick-samples-container');
+    const btnRunLabel = document.getElementById('btn-run-humanize-label');
+
+    const activeClass = "flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition shadow-sm";
+    const inactiveClass = "flex items-center gap-2 px-4 py-2 rounded-lg text-slate-400 hover:text-white transition";
+
+    if (mode === 'text') {
+        if (btnText) btnText.className = activeClass;
+        if (btnFile) btnFile.className = inactiveClass;
+        if (panelText) panelText.classList.remove('hidden');
+        if (panelFile) panelFile.classList.add('hidden');
+        if (samplesContainer) samplesContainer.classList.remove('hidden');
+        if (btnRunLabel) btnRunLabel.textContent = '✨ Run AI Humanization (Text)';
+    } else {
+        if (btnText) btnText.className = inactiveClass;
+        if (btnFile) btnFile.className = activeClass;
+        if (panelText) panelText.classList.add('hidden');
+        if (panelFile) panelFile.classList.remove('hidden');
+        if (samplesContainer) samplesContainer.classList.add('hidden');
+        if (btnRunLabel) {
+            btnRunLabel.textContent = selectedHumanizeFile 
+                ? `✨ Humanize Document (${selectedHumanizeFile.name})`
+                : 'Select a Document to Humanize';
+        }
+    }
+}
+
 function clearUnifiedInput() {
     clearSelectedFile();
     const textarea = document.getElementById('text-input');
@@ -191,12 +271,21 @@ function clearUnifiedInput() {
     textarea.dispatchEvent(new Event('input'));
 }
 
+function clearHumanizeInput() {
+    clearSelectedHumanizeFile();
+    const textarea = document.getElementById('humanize-text-input');
+    if (textarea) {
+        textarea.value = '';
+        textarea.dispatchEvent(new Event('input'));
+    }
+}
+
 // ----------------------------------------------------
 // DROPZONE LOGIC
 // ----------------------------------------------------
 function initDropzones() {
     setupDropzone('unified-dropzone', handleSelectedUnifiedFile);
-    setupDropzone('file-dropzone', handleSelectedBatchFile);
+    setupDropzone('humanize-dropzone', handleSelectedHumanizeFile);
 }
 
 function setupDropzone(dropzoneId, onFileDrop) {
@@ -270,6 +359,51 @@ function clearSelectedFile() {
     if (dropzoneLabel) dropzoneLabel.textContent = 'Click to select or drag and drop a document file here';
     if (btnRunLabel) {
         btnRunLabel.textContent = (currentSourceMode === 'file') ? 'Select a Document to Analyze' : 'Run Hybrid Analysis (Text)';
+    }
+}
+
+function handleHumanizeFileSelected(event) {
+    const file = event.target.files && event.target.files[0];
+    if (file) {
+        handleSelectedHumanizeFile(file);
+    }
+    event.target.value = '';
+}
+
+function handleSelectedHumanizeFile(file) {
+    selectedHumanizeFile = file;
+    const badge = document.getElementById('humanize-selected-file-badge');
+    const fileNameEl = document.getElementById('humanize-selected-file-name');
+    const fileSizeEl = document.getElementById('humanize-selected-file-size');
+    const fileExtEl = document.getElementById('humanize-selected-file-ext');
+    const dropzoneLabel = document.getElementById('humanize-dropzone-label');
+    const btnRunLabel = document.getElementById('btn-run-humanize-label');
+
+    const sizeKb = (file.size / 1024).toFixed(1);
+    const ext = file.name.split('.').pop().toUpperCase();
+
+    if (fileExtEl) fileExtEl.textContent = ext;
+    if (fileNameEl) fileNameEl.textContent = file.name;
+    if (fileSizeEl) fileSizeEl.textContent = `${sizeKb} KB`;
+    if (badge) badge.classList.remove('hidden');
+
+    if (dropzoneLabel) dropzoneLabel.textContent = `Attached: ${file.name} (${sizeKb} KB)`;
+    if (btnRunLabel) btnRunLabel.textContent = `✨ Humanize Document (${file.name})`;
+    showToast(`Attached document: ${file.name}`, 'info');
+}
+
+function clearSelectedHumanizeFile() {
+    selectedHumanizeFile = null;
+    const badge = document.getElementById('humanize-selected-file-badge');
+    const fileInput = document.getElementById('humanize-file-input');
+    const dropzoneLabel = document.getElementById('humanize-dropzone-label');
+    const btnRunLabel = document.getElementById('btn-run-humanize-label');
+
+    if (badge) badge.classList.add('hidden');
+    if (fileInput) fileInput.value = '';
+    if (dropzoneLabel) dropzoneLabel.textContent = 'Click to select or drag and drop a document file here';
+    if (btnRunLabel) {
+        btnRunLabel.textContent = (currentHumanizeInputMode === 'file') ? 'Select a Document to Humanize' : '✨ Run AI Humanization';
     }
 }
 
@@ -418,6 +552,165 @@ function abortUnifiedAnalysis() {
         item.controller.abort();
     }
     activeRequests.unified = { controller: null, id: null };
+}
+
+// ----------------------------------------------------
+// AI TEXT HUMANIZER EXECUTION
+// ----------------------------------------------------
+async function submitHumanizeAnalysis() {
+    if (currentHumanizeInputMode === 'file') {
+        if (!selectedHumanizeFile) {
+            alert('Please select or drag & drop a document file (.pdf, .docx, .md, .txt) first.');
+            return;
+        }
+    } else {
+        const textVal = (document.getElementById('humanize-text-input')?.value || '').trim();
+        if (!textVal) {
+            alert('Please enter or paste text to humanize.');
+            return;
+        }
+    }
+
+    const mode = document.getElementById('humanize-mode-select')?.value || 'auto';
+    const strength = document.getElementById('humanize-strength-select')?.value || 'balanced';
+    const btn = document.getElementById('btn-run-humanize');
+    const btnLabel = document.getElementById('btn-run-humanize-label');
+    const btnAbort = document.getElementById('btn-abort-humanize');
+    const emptyState = document.getElementById('humanize-empty-state');
+    const resultsCard = document.getElementById('humanize-results-card');
+
+    const controller = new AbortController();
+    const reqId = generateRequestId();
+    activeRequests.humanize = { controller, id: reqId };
+
+    if (btn) btn.disabled = true;
+    if (btnLabel) btnLabel.textContent = 'Transforming & Paraphrasing...';
+    if (btnAbort) btnAbort.classList.remove('hidden');
+
+    const progressCard = document.getElementById('humanize-live-progress-card');
+    const stepBadge = document.getElementById('humanize-step-badge');
+    const progressMsg = document.getElementById('humanize-progress-message');
+    const progressPct = document.getElementById('humanize-progress-pct');
+    const progressFill = document.getElementById('humanize-progress-fill');
+
+    const paraBadge = document.getElementById('humanize-para-badge');
+    if (progressCard) {
+        progressCard.classList.remove('hidden');
+        if (stepBadge) stepBadge.textContent = 'Step 1/4';
+        if (paraBadge) paraBadge.classList.add('hidden');
+        if (progressMsg) progressMsg.textContent = (currentHumanizeInputMode === 'file') ? `Extracting ${selectedHumanizeFile.name}...` : 'Analyzing text & language...';
+        if (progressPct) progressPct.textContent = '10%';
+        if (progressFill) progressFill.style.width = '10%';
+    }
+
+    const progressTimer = setInterval(async () => {
+        try {
+            const pollRes = await fetch(`/api/status/${reqId}`);
+            if (pollRes.ok) {
+                const pollData = await pollRes.json();
+                if (pollData && pollData.status === 'running') {
+                    if (stepBadge) stepBadge.textContent = `Step ${pollData.step || 1}/${pollData.total_steps || 4}`;
+                    if (paraBadge) {
+                        if (pollData.current_paragraph && pollData.total_paragraphs) {
+                            paraBadge.textContent = `Para ${pollData.current_paragraph}/${pollData.total_paragraphs}`;
+                            paraBadge.classList.remove('hidden');
+                        } else {
+                            paraBadge.classList.add('hidden');
+                        }
+                    }
+                    if (progressMsg) progressMsg.textContent = pollData.message || 'Transforming...';
+                    const pct = pollData.percent || 15;
+                    if (progressPct) progressPct.textContent = `${pct}%`;
+                    if (progressFill) progressFill.style.width = `${pct}%`;
+                }
+            }
+        } catch (_) {}
+    }, 250);
+
+    try {
+        let res;
+        if (currentHumanizeInputMode === 'file') {
+            const formData = new FormData();
+            formData.append('file', selectedHumanizeFile);
+            formData.append('mode', mode);
+            formData.append('strength', strength);
+            formData.append('request_id', reqId);
+
+            res = await fetch('/api/humanize-document', {
+                method: 'POST',
+                headers: { 'X-Request-ID': reqId },
+                body: formData,
+                signal: controller.signal,
+            });
+        } else {
+            const textVal = document.getElementById('humanize-text-input').value.trim();
+            res = await fetch('/api/humanize', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Request-ID': reqId,
+                },
+                body: JSON.stringify({
+                    text: textVal,
+                    mode: mode,
+                    strength: strength,
+                    request_id: reqId,
+                }),
+                signal: controller.signal,
+            });
+        }
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `Server returned HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        lastHumanizeResult = data;
+        renderHumanizeResult(data);
+
+        if (emptyState) emptyState.classList.add('hidden');
+        if (resultsCard) resultsCard.classList.remove('hidden');
+        showToast('Text humanization completed successfully!', 'success');
+
+        resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (e) {
+        if (e.name === 'AbortError') {
+            showToast('Humanization cancelled by user', 'warning');
+        } else {
+            alert('Humanization error: ' + e.message);
+            showToast('Error: ' + e.message, 'error');
+        }
+    } finally {
+        clearInterval(progressTimer);
+        if (progressFill) progressFill.style.width = '100%';
+        if (progressPct) progressPct.textContent = '100%';
+        if (progressMsg) progressMsg.textContent = 'Transformation finished';
+        setTimeout(() => {
+            if (progressCard) progressCard.classList.add('hidden');
+        }, 500);
+
+        if (btn) btn.disabled = false;
+        if (btnLabel) btnLabel.textContent = '✨ Run AI Humanization';
+        if (btnAbort) btnAbort.classList.add('hidden');
+        activeRequests.humanize = { controller: null, id: null };
+    }
+}
+
+function abortHumanizeAnalysis() {
+    const item = activeRequests.humanize;
+    if (!item) return;
+
+    if (item.id) {
+        fetch(`/api/cancel/${item.id}`, { method: 'POST' }).catch(() => {
+            fetch(`/api/abort/${item.id}`, { method: 'POST' }).catch(() => {});
+        });
+    }
+    if (item.controller) {
+        item.controller.abort();
+    }
+    activeRequests.humanize = { controller: null, id: null };
 }
 
 function getFallbackConfidence(pctVal) {
@@ -635,9 +928,22 @@ function renderParagraphsList() {
         const scaleVal = (p.human_ai_scale !== undefined) ? p.human_ai_scale.toFixed(1) : '50.0';
         const paraConf = getFallbackConfidence(p.human_ai_scale);
         const card = document.createElement('div');
+        card.id = `para-card-${p.index}`;
         const isSuspicious = (p.human_ai_scale || 0) >= 50.0;
         const borderClass = isSuspicious ? 'border-rose-500/30 bg-rose-950/10' : 'border-emerald-500/30 bg-emerald-950/10';
         const wordCount = p.word_count || (p.text ? p.text.split(/\s+/).length : 0);
+
+        let humanizeBtnHtml = '';
+        if (isSuspicious || p.label === 'ai' || (p.human_ai_scale || 0) >= 45.0) {
+            humanizeBtnHtml = `
+                <button onclick="humanizeIndividualParagraph(${p.index})" id="btn-humanize-para-${p.index}" class="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 active:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold transition" title="Humanize this paragraph in-place">
+                    <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    <span>✨ Humanize Paragraph</span>
+                </button>
+            `;
+        }
 
         card.className = `p-4 rounded-xl border ${borderClass} space-y-2.5 transition`;
         card.innerHTML = `
@@ -649,7 +955,8 @@ function renderParagraphsList() {
                     </span>
                     <span class="text-[11px] text-slate-500 font-mono">${wordCount} words</span>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2.5">
+                    ${humanizeBtnHtml}
                     <span class="text-slate-400 font-mono text-[11px]">AI Probability:</span>
                     <span class="font-mono font-bold ${isSuspicious ? 'text-rose-400' : 'text-emerald-400'} text-xs">${scaleVal}%</span>
                 </div>
@@ -666,95 +973,6 @@ function renderParagraphsList() {
     });
 }
 
-// ----------------------------------------------------
-// BATCH CSV / TSV ANALYSIS
-// ----------------------------------------------------
-function handleFileSelected(event) {
-    const file = event.target.files && event.target.files[0];
-    if (file) {
-        handleSelectedBatchFile(file);
-    }
-    event.target.value = '';
-}
-
-function handleSelectedBatchFile(file) {
-    selectedBatchFile = file;
-    const dropzoneText = document.getElementById('batch-dropzone-text');
-    const btn = document.getElementById('btn-run-batch');
-    const btnLabel = document.getElementById('btn-run-batch-label');
-
-    const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
-    dropzoneText.textContent = `Selected: ${file.name} (${sizeMb} MB)`;
-
-    btn.disabled = false;
-    btnLabel.textContent = `Process Dataset (${file.name})`;
-}
-
-async function submitBatchAnalysis() {
-    if (!selectedBatchFile) {
-        alert('Please select a .csv or .tsv file.');
-        return;
-    }
-
-    const textCol = document.getElementById('batch-text-column').value.trim();
-    const mode = document.getElementById('batch-mode-select').value;
-    const batchSize = parseInt(document.getElementById('batch-size-input').value) || 32;
-
-    const btn = document.getElementById('btn-run-batch');
-    const btnLabel = document.getElementById('btn-run-batch-label');
-    const btnAbort = document.getElementById('btn-abort-batch');
-    const resultsContainer = document.getElementById('batch-results-container');
-
-    const controller = new AbortController();
-    const reqId = generateRequestId();
-    activeRequests.batch = { controller, id: reqId };
-
-    btn.disabled = true;
-    btnLabel.textContent = 'Processing Batch Dataset...';
-    btnAbort.classList.remove('hidden');
-
-    const formData = new FormData();
-    formData.append('file', selectedBatchFile);
-    formData.append('mode', mode);
-    formData.append('batch_size', batchSize);
-    formData.append('request_id', reqId);
-    if (textCol) {
-        formData.append('text_column', textCol);
-    }
-
-    try {
-        const res = await fetch('/api/score-file', {
-            method: 'POST',
-            headers: { 'X-Request-ID': reqId },
-            body: formData,
-            signal: controller.signal,
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.detail || 'Batch processing failed');
-        }
-
-        const data = await res.json();
-        lastBatchResult = data;
-        renderBatchResult(data);
-        resultsContainer.classList.remove('hidden');
-        showToast('Batch processing finished', 'success');
-
-    } catch (e) {
-        if (e.name === 'AbortError') {
-            showToast('Batch analysis aborted', 'warning');
-        } else {
-            alert('Error: ' + e.message);
-            showToast('Error: ' + e.message, 'error');
-        }
-    } finally {
-        btn.disabled = false;
-        btnLabel.textContent = `Process Dataset (${selectedBatchFile.name})`;
-        btnAbort.classList.add('hidden');
-        activeRequests.batch = { controller: null, id: null };
-    }
-}
 
 function abortAnalysis(type) {
     const item = activeRequests[type];
@@ -767,80 +985,6 @@ function abortAnalysis(type) {
         item.controller.abort();
     }
     activeRequests[type] = { controller: null, id: null };
-}
-
-function renderBatchResult(data) {
-    const totalRows = data.total_rows || 0;
-    const aiRows = (data.ai_rows !== undefined) ? data.ai_rows : (data.ai_count || 0);
-    const humanRows = (data.human_rows !== undefined) ? data.human_rows : (data.human_count || 0);
-    const aiPct = (data.ai_percentage !== undefined) ? data.ai_percentage : 0;
-
-    document.getElementById('batch-total-rows').textContent = totalRows.toLocaleString();
-    document.getElementById('batch-ai-count').textContent = aiRows.toLocaleString();
-    document.getElementById('batch-ai-pct').textContent = `(${aiPct}%)`;
-    document.getElementById('batch-human-count').textContent = humanRows.toLocaleString();
-    document.getElementById('batch-human-pct').textContent = `(${(100 - aiPct).toFixed(1)}%)`;
-
-    const thead = document.getElementById('batch-table-head');
-    const tbody = document.getElementById('batch-table-body');
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
-
-    const previewList = data.preview_rows || data.preview || [];
-    if (previewList.length === 0) return;
-
-    const cols = data.preview_columns || Object.keys(previewList[0]);
-    const headerRow = document.createElement('tr');
-    cols.forEach(col => {
-        const th = document.createElement('th');
-        th.className = "px-4 py-2 font-semibold";
-        th.textContent = col;
-        headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-
-    previewList.forEach(row => {
-        const tr = document.createElement('tr');
-        tr.className = "hover:bg-slate-800/40";
-        cols.forEach(col => {
-            const td = document.createElement('td');
-            td.className = "px-4 py-2 truncate max-w-xs";
-            const val = row[col];
-            if (col === 'ai_prediction' || col === 'ai_detector_label' || col === 'ai_label') {
-                const isAI = String(val).toLowerCase() === 'ai';
-                td.innerHTML = `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${isAI ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'}">${val}</span>`;
-            } else if (col === 'human_ai_scale' || col === 'ai_probability_pct') {
-                td.textContent = (typeof val === 'number') ? `${val.toFixed(1)}%` : val;
-            } else {
-                td.textContent = val !== null ? String(val) : '';
-            }
-            tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-    });
-}
-
-function downloadScoredCSV() {
-    if (!lastBatchResult) {
-        showToast('No scored data available for download.', 'warning');
-        return;
-    }
-    if (lastBatchResult.csv_content) {
-        const blob = new Blob([lastBatchResult.csv_content], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = lastBatchResult.filename || 'scored_dataset.csv';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showToast('Scored CSV downloaded', 'success');
-    } else if (lastBatchResult.download_token) {
-        window.location.href = `/api/download/${lastBatchResult.download_token}`;
-    } else {
-        showToast('No CSV content available to download', 'warning');
-    }
 }
 
 // ----------------------------------------------------
@@ -916,18 +1060,243 @@ async function copyUnifiedMarkdownReport() {
     }
 }
 
-async function downloadBatchMarkdownReport() {
-    if (!lastBatchResult) {
-        showToast('Please process a batch dataset first.', 'warning');
+// ----------------------------------------------------
+// UTILITIES & EXPORTS
+// ----------------------------------------------------
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function escapeJsString(str) {
+    if (!str) return '';
+    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
+}
+
+function copyTextToClipboard(text, successMsg = 'Copied to clipboard!') {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast(successMsg, 'success');
+        }).catch(err => {
+            showToast('Copy failed: ' + err.message, 'error');
+        });
+    } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast(successMsg, 'success');
+    }
+}
+
+// ----------------------------------------------------
+// HUMANIZER RESULTS RENDERING & ACTIONS
+// ----------------------------------------------------
+function renderHumanizeResult(data) {
+    if (!data) return;
+
+    // 1. Dual Comparison Scores & Delta Badge
+    const beforeScore = data.before_scale !== undefined ? data.before_scale : 0;
+    const afterScore = data.after_scale !== undefined ? data.after_scale : 0;
+    const delta = data.delta_scale !== undefined ? data.delta_scale : (beforeScore - afterScore);
+
+    const beforeEl = document.getElementById('humanize-before-score');
+    const afterEl = document.getElementById('humanize-after-score');
+    const deltaEl = document.getElementById('humanize-delta-badge');
+    const beforeGradeEl = document.getElementById('humanize-before-grade');
+    const afterGradeEl = document.getElementById('humanize-after-grade');
+
+    if (beforeEl) beforeEl.textContent = `${beforeScore.toFixed(1)}%`;
+    if (afterEl) afterEl.textContent = `${afterScore.toFixed(1)}%`;
+
+    const beforeConf = data.before_confidence || getFallbackConfidence(beforeScore);
+    const afterConf = data.after_confidence || getFallbackConfidence(afterScore);
+
+    if (beforeGradeEl) {
+        beforeGradeEl.textContent = beforeConf.grade || (beforeScore >= 50 ? 'Grade D' : 'Grade A');
+        beforeGradeEl.className = `px-2 py-0.5 rounded text-[11px] font-bold border ${beforeConf.badge_class || 'border-rose-500/30 text-rose-300 bg-rose-500/10'}`;
+    }
+    if (afterGradeEl) {
+        afterGradeEl.textContent = afterConf.grade || (afterScore >= 50 ? 'Grade D' : 'Grade A');
+        afterGradeEl.className = `px-2 py-0.5 rounded text-[11px] font-bold border ${afterConf.badge_class || 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10'}`;
+    }
+
+    if (deltaEl) {
+        const sign = delta >= 0 ? '-' : '+';
+        deltaEl.innerHTML = `
+            <svg class="w-3.5 h-3.5 ${delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${delta >= 0 ? 'M19 14l-7 7m0 0l-7-7m7 7V3' : 'M5 10l7-7m0 0l7 7m-7-7v18'}"/>
+            </svg>
+            <span>${sign}${Math.abs(delta).toFixed(1)}% AI Reduction</span>
+        `;
+        deltaEl.className = delta >= 0 
+            ? "px-3.5 py-1.5 rounded-full text-xs font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm"
+            : "px-3.5 py-1.5 rounded-full text-xs font-bold font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 shadow-sm";
+    }
+
+    // 2. Summary KPI stats
+    const summary = data.summary || {};
+    const genResultBadge = document.getElementById('humanize-generator-result-badge');
+    if (genResultBadge) {
+        const provider = summary.generator_provider || data.generator_model || 'T5 Paraphraser';
+        const isExt = summary.external_llm_active !== undefined ? summary.external_llm_active : data.external_llm_active;
+        if (isExt) {
+            genResultBadge.innerHTML = `<svg class="w-3 h-3 text-emerald-400 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>${escapeHtml(provider)} (Local T5 bypassed)`;
+            genResultBadge.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-mono font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30";
+        } else {
+            genResultBadge.innerHTML = `<svg class="w-3 h-3 text-indigo-400 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>${escapeHtml(provider)} (Local)`;
+            genResultBadge.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-mono font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/30";
+        }
+    }
+    const modifiedParas = summary.modified_paragraphs_count !== undefined ? summary.modified_paragraphs_count : (data.paragraphs ? data.paragraphs.filter(p => p.changed).length : 0);
+    const totalParas = summary.total_paragraphs !== undefined ? summary.total_paragraphs : (data.paragraphs ? data.paragraphs.length : 1);
+    const removedCliches = summary.removed_cliches_count !== undefined ? summary.removed_cliches_count : (data.removed_markers ? data.removed_markers.length : 0);
+    const wordsBefore = summary.word_count_before || (data.original_text ? data.original_text.split(/\s+/).length : 0);
+    const wordsAfter = summary.word_count_after || (data.humanized_text ? data.humanized_text.split(/\s+/).length : 0);
+    const charsBefore = summary.char_count_before || (data.original_text ? data.original_text.length : 0);
+    const charsAfter = summary.char_count_after || (data.humanized_text ? data.humanized_text.length : 0);
+
+    const statParasEl = document.getElementById('humanize-stat-modified-paras');
+    const statClichesEl = document.getElementById('humanize-stat-removed-cliches');
+    const statWordsEl = document.getElementById('humanize-stat-words');
+    const statCharsEl = document.getElementById('humanize-stat-chars');
+
+    if (statParasEl) statParasEl.textContent = `${modifiedParas} / ${totalParas}`;
+    if (statClichesEl) statClichesEl.textContent = `${removedCliches} scrubbed`;
+    if (statWordsEl) statWordsEl.textContent = `${wordsBefore.toLocaleString()} → ${wordsAfter.toLocaleString()}`;
+    if (statCharsEl) statCharsEl.textContent = `${charsBefore.toLocaleString()} → ${charsAfter.toLocaleString()}`;
+
+    // 3. Side-by-Side Comparison Panes
+    const origViewer = document.getElementById('humanize-original-viewer');
+    const resViewer = document.getElementById('humanize-result-viewer');
+    if (origViewer) origViewer.textContent = data.original_text || '';
+    if (resViewer) resViewer.textContent = data.humanized_text || '';
+
+    // 4. Paragraph Breakdown List
+    const parasContainer = document.getElementById('humanize-paragraphs-container');
+    const parasBadge = document.getElementById('humanize-paras-count-badge');
+    const paragraphs = data.paragraphs || [];
+
+    if (parasBadge) parasBadge.textContent = `${paragraphs.length} paragraphs`;
+    if (parasContainer) {
+        parasContainer.innerHTML = '';
+        if (paragraphs.length === 0) {
+            parasContainer.innerHTML = `<div class="text-center py-8 text-xs text-slate-500">No paragraph diffs available.</div>`;
+        } else {
+            paragraphs.forEach(p => {
+                const card = document.createElement('div');
+                const pBefore = (p.before_scale !== undefined) ? p.before_scale.toFixed(1) : '0.0';
+                const pAfter = (p.after_scale !== undefined) ? p.after_scale.toFixed(1) : '0.0';
+                const pDelta = (p.delta_scale !== undefined) ? p.delta_scale.toFixed(1) : (p.before_scale - p.after_scale).toFixed(1);
+                const isChanged = p.changed !== false;
+                const borderClass = isChanged ? 'border-indigo-500/30 bg-indigo-950/10' : 'border-slate-800 bg-slate-950/40';
+
+                card.className = `p-4 rounded-xl border ${borderClass} space-y-3 transition`;
+                card.innerHTML = `
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-xs border-b border-slate-800 pb-2.5">
+                        <div class="flex items-center gap-2">
+                            <span class="font-mono text-slate-400 font-semibold">#${p.index}</span>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-bold border ${p.before_scale >= 50 ? 'border-rose-500/30 text-rose-300 bg-rose-500/10' : 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10'}">
+                                Before: ${pBefore}%
+                            </span>
+                            <span class="text-slate-500 text-xs">→</span>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-bold border ${p.after_scale >= 50 ? 'border-rose-500/30 text-rose-300 bg-rose-500/10' : 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10'}">
+                                After: ${pAfter}%
+                            </span>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold ${parseFloat(pDelta) >= 0 ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}">
+                                ${parseFloat(pDelta) >= 0 ? '-' : '+'}${Math.abs(parseFloat(pDelta))}% AI
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            ${p.is_code || p.stage_applied === 'code' ? '<span class="px-2 py-0.5 rounded text-[10px] font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/20">Code (Preserved)</span>' : ''}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800">
+                                Stage: ${escapeHtml(p.stage_applied || 'full')}
+                            </span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${isChanged ? 'text-indigo-300 bg-indigo-500/20' : 'text-slate-400 bg-slate-800'}">
+                                ${isChanged ? 'Modified' : 'Unchanged'}
+                            </span>
+                            <button onclick="copyTextToClipboard('${escapeJsString(p.humanized_text)}', 'Paragraph #${p.index} copied')" class="p-1 rounded text-slate-400 hover:text-white transition" title="Copy humanized paragraph">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div class="space-y-1">
+                            <span class="text-[11px] font-semibold text-rose-400 block">${p.is_code ? 'Original Code Block:' : 'Original Paragraph:'}</span>
+                            ${p.is_code ? `<pre class="font-mono text-[11px] overflow-x-auto text-slate-300 bg-slate-950 p-2.5 rounded-lg border border-slate-900 whitespace-pre-wrap"><code>${escapeHtml(p.original_text)}</code></pre>` : `<p class="text-slate-300 leading-relaxed font-normal bg-slate-950 p-2.5 rounded-lg border border-slate-900">${escapeHtml(p.original_text)}</p>`}
+                        </div>
+                        <div class="space-y-1">
+                            <span class="text-[11px] font-semibold text-emerald-400 block">${p.is_code ? 'Preserved Code Block:' : 'Humanized Paragraph:'}</span>
+                            ${p.is_code ? `<pre class="font-mono text-[11px] overflow-x-auto text-emerald-300 bg-slate-950 p-2.5 rounded-lg border border-slate-900 whitespace-pre-wrap"><code>${escapeHtml(p.humanized_text)}</code></pre>` : `<p class="text-slate-100 leading-relaxed font-normal bg-slate-950 p-2.5 rounded-lg border border-slate-900">${escapeHtml(p.humanized_text)}</p>`}
+                        </div>
+                    </div>
+                `;
+                parasContainer.appendChild(card);
+            });
+        }
+    }
+}
+
+async function copyHumanizedText() {
+    if (!lastHumanizeResult || !lastHumanizeResult.humanized_text) {
+        showToast('No humanized text available to copy.', 'warning');
+        return;
+    }
+    copyTextToClipboard(lastHumanizeResult.humanized_text, 'Humanized text copied to clipboard!');
+}
+
+function downloadHumanizedTextFile(ext = 'txt') {
+    if (!lastHumanizeResult || !lastHumanizeResult.humanized_text) {
+        showToast('No humanized text available to download.', 'warning');
+        return;
+    }
+
+    const text = lastHumanizeResult.humanized_text;
+    const base = lastHumanizeResult.filename || (selectedHumanizeFile ? selectedHumanizeFile.name : 'humanized_text');
+    const cleanBase = base.replace(/\.[^/.]+$/, "");
+    const filename = `humanized_${cleanBase}.${ext}`;
+    const mimeType = ext === 'md' ? 'text/markdown;charset=utf-8;' : 'text/plain;charset=utf-8;';
+
+    const blob = new Blob([text], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast(`Downloaded ${filename} successfully`, 'success');
+}
+
+async function downloadHumanizeMarkdownReport() {
+    if (!lastHumanizeResult) {
+        showToast('Please run humanization first.', 'warning');
         return;
     }
 
     try {
-        showToast('Generating Batch Markdown report...', 'info');
+        showToast('Generating Humanization Markdown report...', 'info');
+        const baseName = lastHumanizeResult.filename || (selectedHumanizeFile ? selectedHumanizeFile.name : 'humanized_session');
+        const cleanBase = baseName.replace(/\.[^/.]+$/, "");
+        const filename = `report_humanized_${cleanBase}.md`;
+
         const payload = {
-            data: lastBatchResult,
-            report_type: 'batch',
-            filename: lastBatchResult.filename || (selectedBatchFile ? selectedBatchFile.name : 'dataset.csv')
+            data: lastHumanizeResult,
+            report_type: 'humanize',
+            filename: filename,
         };
 
         const res = await fetch('/api/report/markdown', {
@@ -942,10 +1311,6 @@ async function downloadBatchMarkdownReport() {
         }
 
         const mdText = await res.text();
-        const baseName = lastBatchResult.filename || (selectedBatchFile ? selectedBatchFile.name : 'dataset');
-        const cleanBase = baseName.replace(/\.[^/.]+$/, "");
-        const filename = `report_${cleanBase}.md`;
-
         const blob = new Blob([mdText], { type: 'text/markdown;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -956,21 +1321,151 @@ async function downloadBatchMarkdownReport() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        showToast('Batch Markdown report downloaded', 'success');
+        showToast('Humanization audit report downloaded successfully', 'success');
     } catch (err) {
         showToast('Failed to download report: ' + err.message, 'error');
     }
 }
 
+function reverifyInInspector() {
+    if (!lastHumanizeResult || !lastHumanizeResult.humanized_text) {
+        showToast('No humanized text available to verify.', 'warning');
+        return;
+    }
+
+    const text = lastHumanizeResult.humanized_text;
+    const input = document.getElementById('text-input');
+    if (input) {
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+    }
+
+    setAnalysisSourceMode('text');
+    switchView('unified');
+
+    showToast('Re-verifying humanized text in Inspector...', 'info');
+    submitHybridAnalysis();
+}
+
 // ----------------------------------------------------
-// UTILITIES
+// INSPECTOR INTEGRATION FUNCTIONS
 // ----------------------------------------------------
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+function transferTextToHumanizer() {
+    if (!lastUnifiedResult) {
+        showToast('Please run an analysis first.', 'warning');
+        return;
+    }
+
+    const fullText = lastUnifiedResult.full_text || (lastUnifiedResult.paragraphs ? lastUnifiedResult.paragraphs.map(p => p.text).join('\n\n') : '');
+    if (!fullText) {
+        showToast('No text available to transfer.', 'warning');
+        return;
+    }
+
+    const humanizeInput = document.getElementById('humanize-text-input');
+    if (humanizeInput) {
+        humanizeInput.value = fullText;
+        humanizeInput.dispatchEvent(new Event('input'));
+    }
+
+    if (lastUnifiedResult.mode) {
+        const modeSelect = document.getElementById('humanize-mode-select');
+        if (modeSelect) modeSelect.value = lastUnifiedResult.mode;
+    }
+
+    setHumanizeInputMode('text');
+    clearSelectedHumanizeFile();
+    switchView('humanize');
+
+    showToast('Text transferred to AI Humanizer Workspace', 'success');
+}
+
+async function humanizeIndividualParagraph(index) {
+    if (!lastUnifiedResult || !lastUnifiedResult.paragraphs) return;
+
+    const p = lastUnifiedResult.paragraphs.find(item => item.index === index);
+    if (!p || !p.text) return;
+
+    const btn = document.getElementById(`btn-humanize-para-${index}`);
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `
+            <svg class="animate-spin w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Humanizing...</span>
+        `;
+    }
+
+    try {
+        const res = await fetch('/api/humanize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: p.text,
+                mode: lastUnifiedResult.mode || 'auto',
+                strength: 'balanced',
+            }),
+        });
+
+        if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            throw new Error(errJson.detail || `Server error HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        // Update paragraph in lastUnifiedResult
+        const oldScale = p.human_ai_scale || 0;
+        p.text = data.humanized_text;
+        p.human_ai_scale = data.after_scale;
+        p.label = data.after_scale >= 50.0 ? 'ai' : 'human';
+        p.ai_probability = data.after_scale / 100.0;
+        p.word_count = data.humanized_text.split(/\s+/).length;
+
+        // Recalculate document-level weighted score
+        let totalWeighted = 0;
+        let totalWords = 0;
+        lastUnifiedResult.paragraphs.forEach(item => {
+            const words = item.word_count || (item.text ? item.text.split(/\s+/).length : 1);
+            totalWeighted += (item.human_ai_scale || 0) * words;
+            totalWords += words;
+        });
+        const newWeightedScale = totalWords > 0 ? (totalWeighted / totalWords) : data.after_scale;
+        lastUnifiedResult.paragraph_weighted_scale = newWeightedScale;
+        if (lastUnifiedResult.summary) {
+            lastUnifiedResult.summary.paragraph_weighted_scale = newWeightedScale;
+            lastUnifiedResult.summary.ai_paragraphs = lastUnifiedResult.paragraphs.filter(item => item.label === 'ai').length;
+            lastUnifiedResult.summary.human_paragraphs = lastUnifiedResult.paragraphs.filter(item => item.label !== 'ai').length;
+            lastUnifiedResult.summary.ai_paragraph_pct = Math.round((lastUnifiedResult.summary.ai_paragraphs / lastUnifiedResult.paragraphs.length) * 100);
+        }
+
+        // Update full_text in lastUnifiedResult
+        lastUnifiedResult.full_text = lastUnifiedResult.paragraphs.map(item => item.text).join('\n\n');
+
+        renderUnifiedResults(lastUnifiedResult);
+
+        // Flash highlight on updated card
+        const cardId = `para-card-${index}`;
+        const updatedCard = document.getElementById(cardId);
+        if (updatedCard) {
+            updatedCard.classList.add('ring-2', 'ring-emerald-500', 'transition-all');
+            setTimeout(() => updatedCard.classList.remove('ring-2', 'ring-emerald-500'), 2000);
+        }
+
+        showToast(`Paragraph #${index} successfully humanized: ${oldScale.toFixed(1)}% → ${data.after_scale.toFixed(1)}%`, 'success');
+
+    } catch (err) {
+        showToast(`Failed to humanize paragraph #${index}: ${err.message}`, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `
+                <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                <span>✨ Humanize Paragraph</span>
+            `;
+        }
+    }
 }

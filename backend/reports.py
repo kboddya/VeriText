@@ -23,6 +23,16 @@ def _format_percentage(val: Any) -> str:
         return "N/A"
 
 
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely convert a value to float, returning default on None or conversion errors."""
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def generate_markdown_report(
     data: dict[str, Any],
     *,
@@ -233,89 +243,235 @@ def generate_markdown_report(
     return "\n".join(lines)
 
 
-def generate_batch_markdown_report(
+def generate_humanize_markdown_report(
     data: dict[str, Any],
     *,
+    source_name: Optional[str] = None,
     filename: Optional[str] = None,
     created_at: Optional[str] = None,
 ) -> str:
     """
-    Generate a comprehensive Markdown report in English for a batch tabular dataset (.csv / .tsv).
+    Generate a comprehensive, GitHub-flavored Markdown transformation report
+    for text or document humanized via VeriText ModernTextHumanizer.
     """
     if not created_at:
         created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    resolved_filename = (
-        data.get("filename")
-        or filename
-        or "dataset.csv"
+    resolved_source = (
+        filename
+        or source_name
+        or data.get("filename")
+        or "Direct Text Input"
     )
 
     summary = data.get("summary") or {}
-    total_rows = summary.get("total_rows", data.get("total_rows", 0))
-    ai_count = summary.get("ai_count", data.get("ai_count", data.get("ai_rows", 0)))
-    human_count = summary.get("human_count", data.get("human_count", data.get("human_rows", 0)))
-    ai_pct = summary.get("ai_percentage", data.get("ai_percentage", 0.0))
+    before_scale = data.get("before_scale", 0.0)
     try:
-        human_pct = round(100.0 - float(ai_pct), 2)
+        before_scale = float(before_scale)
     except (ValueError, TypeError):
-        human_pct = 0.0
+        before_scale = 0.0
 
-    text_column = summary.get("text_column") or "auto"
-    mode = summary.get("mode") or data.get("mode") or "auto"
-    device = summary.get("device") or data.get("device") or "auto"
+    after_scale = data.get("after_scale", 0.0)
+    try:
+        after_scale = float(after_scale)
+    except (ValueError, TypeError):
+        after_scale = 0.0
+
+    delta_scale = data.get("delta_scale")
+    if delta_scale is None:
+        delta_scale = round(before_scale - after_scale, 2)
+    try:
+        delta_scale = float(delta_scale)
+    except (ValueError, TypeError):
+        delta_scale = 0.0
+
+    before_para_scale = data.get("before_paragraph_scale", before_scale)
+    try:
+        before_para_scale = float(before_para_scale)
+    except (ValueError, TypeError):
+        before_para_scale = before_scale
+
+    after_para_scale = data.get("after_paragraph_scale", after_scale)
+    try:
+        after_para_scale = float(after_para_scale)
+    except (ValueError, TypeError):
+        after_para_scale = after_scale
+
+    mode = str(data.get("mode") or "auto").upper()
+    effective_lang = str(data.get("effective_language") or "en").upper()
+    strength = str(data.get("strength") or "balanced").capitalize()
+    critic_engine = str(data.get("critic_engine") or data.get("model_used") or "RuBERT-AI / DeBERTa-v3 (Detector-Guided Critic)")
+    req_id = data.get("request_id") or "N/A"
+
+    before_conf = data.get("before_confidence")
+    if not isinstance(before_conf, dict) or "grade" not in before_conf:
+        before_conf = get_confidence_status(before_scale)
+
+    after_conf = data.get("after_confidence")
+    if not isinstance(after_conf, dict) or "grade" not in after_conf:
+        after_conf = get_confidence_status(after_scale)
+
+    orig_text = data.get("original_text") or ""
+    humanized_text = data.get("humanized_text") or ""
+
+    words_before = summary.get("word_count_before")
+    if words_before is None:
+        words_before = len(orig_text.split()) if orig_text else 0
+
+    words_after = summary.get("word_count_after")
+    if words_after is None:
+        words_after = len(humanized_text.split()) if humanized_text else 0
+
+    chars_before = summary.get("char_count_before")
+    if chars_before is None:
+        chars_before = len(orig_text) if orig_text else 0
+
+    chars_after = summary.get("char_count_after")
+    if chars_after is None:
+        chars_after = len(humanized_text) if humanized_text else 0
+
+    paragraphs = data.get("paragraphs") or []
+    total_paras = summary.get("total_paragraphs", len(paragraphs) if paragraphs else 1)
+    modified_paras = summary.get("modified_paragraphs_count")
+    if modified_paras is None:
+        modified_paras = sum(1 for p in paragraphs if p.get("original_text") != p.get("humanized_text"))
+
+    removed_markers = data.get("removed_markers") or []
+    removed_cliches_count = summary.get("removed_cliches_count", len(removed_markers))
 
     lines: list[str] = []
 
-    lines.append("# 📊 VeriText — Batch Dataset Analysis Report")
+    # Title & Header
+    lines.append("# ✨ VeriText — AI Text Humanization & Transformation Report")
     lines.append("")
-    lines.append("> Distribution analysis of synthetic and human-written content in tabular dataset.")
+    lines.append("> Zero-training, detector-guided text transformation and AI score reduction audit.")
     lines.append("")
 
-    lines.append("## 📋 Dataset Metadata")
+    # Transformation Metadata Table
+    lines.append("## 📋 Transformation Metadata")
     lines.append("")
     lines.append("| Parameter | Value |")
     lines.append("| :--- | :--- |")
-    lines.append(f"| **Generation Timestamp** | `{created_at}` |")
-    lines.append(f"| **Dataset Filename** | `{resolved_filename}` |")
-    lines.append(f"| **Target Text Column** | `{text_column}` |")
-    lines.append(f"| **Model Language Mode** | `{str(mode).upper()}` |")
-    lines.append(f"| **Compute Device** | `{str(device).upper()}` |")
+    lines.append(f"| **Transformation Timestamp** | `{created_at}` |")
+    lines.append(f"| **Target Document / Source** | `{resolved_source}` |")
+    lines.append(f"| **Language Mode** | `{mode}` (Effective: `{effective_lang}`) |")
+    lines.append(f"| **Humanization Strength** | `{strength}` |")
+    lines.append(f"| **Critic Engine Architecture** | `{critic_engine}` |")
+    if req_id != "N/A":
+        lines.append(f"| **Session ID (Request ID)** | `{req_id}` |")
     lines.append("")
 
-    lines.append("## 📈 Summary Classification Results")
+    # Executive Verdict & Confidence Evolution
+    lines.append("## 🎯 Executive Verdict & Confidence Evolution")
     lines.append("")
-    lines.append("| Category | Record Count | Percentage of Dataset |")
-    lines.append("| :--- | :---: | :---: |")
-    lines.append(f"| **🔴 AI-Generated** | **{ai_count:,}** | **{_format_percentage(ai_pct)}** |")
-    lines.append(f"| **🟢 Human-Written** | **{human_count:,}** | **{_format_percentage(human_pct)}** |")
-    lines.append(f"| **Total Records Evaluated** | **{total_rows:,}** | **100.00%** |")
+    b_grade = before_conf.get("grade", "Grade")
+    b_label = before_conf.get("label", "")
+    a_grade = after_conf.get("grade", "Grade")
+    a_label = after_conf.get("label", "")
+    lines.append(f"### {b_grade} ({b_label}) → {a_grade} ({a_label})")
+    lines.append("")
+    lines.append(f"> **Net AI Reduction:** **-{_format_percentage(delta_scale)}** (Baseline: {_format_percentage(before_scale)} → Transformed: {_format_percentage(after_scale)})")
+    lines.append("")
+    lines.append("| Transformation Metric | Baseline (Before) | Transformed (After) | Net Change |")
+    lines.append("| :--- | :---: | :---: | :---: |")
+    lines.append(f"| **Continuous AI Probability** | **{_format_percentage(before_scale)}** | **{_format_percentage(after_scale)}** | **-{_format_percentage(delta_scale)}** |")
+    p_delta = round(before_para_scale - after_para_scale, 2)
+    lines.append(f"| **Paragraph-Weighted AI Score** | **{_format_percentage(before_para_scale)}** | **{_format_percentage(after_para_scale)}** | **-{_format_percentage(p_delta)}** |")
+    lines.append(f"| **Confidence Status Grade** | {b_grade} ({b_label}) | {a_grade} ({a_label}) | Improved |")
+    lines.append(f"| **Modified Paragraphs** | 0 / {total_paras} | {modified_paras} / {total_paras} | {modified_paras} transformed |")
+    lines.append(f"| **Scrubbed Clichés Count** | 0 | {removed_cliches_count} | {removed_cliches_count} scrubbed |")
+    lines.append(f"| **Word / Character Count** | {words_before:,} / {chars_before:,} | {words_after:,} / {chars_after:,} | {words_after - words_before:+d} words |")
     lines.append("")
 
-    preview_rows = data.get("preview_rows") or data.get("preview") or []
-    if preview_rows:
-        lines.append("## 🔍 Dataset Preview (First Rows)")
+    # Scrubbed Generative Clichés & Markers
+    lines.append("## 🔍 Scrubbed Generative Clichés & Stylistic Markers")
+    lines.append("")
+    if removed_markers:
+        lines.append("| # | Detected Marker / Phrase | Pattern Description | Replacement Applied | Frequency |")
+        lines.append("| :-: | :--- | :--- | :--- | :-: |")
+        for i, m in enumerate(removed_markers, 1):
+            phrase = _escape_md_table_cell(str(m.get("phrase", "")))
+            desc = _escape_md_table_cell(str(m.get("category") or m.get("description", "Formulaic transition")))
+            replacement = _escape_md_table_cell(str(m.get("replacement", "*(scrubbed)*")))
+            count = m.get("count", 1)
+            lines.append(f"| {i} | `«{phrase}»` | {desc} | `{replacement}` | **{count}** |")
         lines.append("")
-        cols = list(preview_rows[0].keys())
-        # Filter down columns if too many for markdown table
-        display_cols = cols[:8]
-        header = "| " + " | ".join(display_cols) + " |"
-        sep = "| " + " | ".join([":---"] * len(display_cols)) + " |"
-        lines.append(header)
-        lines.append(sep)
-
-        for row in preview_rows[:15]:
-            vals = []
-            for col in display_cols:
-                raw_val = str(row.get(col, ""))
-                if len(raw_val) > 60:
-                    raw_val = raw_val[:60] + "…"
-                vals.append(_escape_md_table_cell(raw_val))
-            lines.append("| " + " | ".join(vals) + " |")
+    else:
+        lines.append("*No generative clichés or synthetic boilerplate markers detected.*")
         lines.append("")
 
+    # Paragraph-by-Paragraph Breakdown
+    if paragraphs:
+        lines.append("## 📑 Paragraph-by-Paragraph Transformation Breakdown")
+        lines.append("")
+        lines.append("| # | Status | Original AI % | Humanized AI % | Net Delta | Stage Applied | Excerpt Diff |")
+        lines.append("| :-: | :---: | :---: | :---: | :---: | :---: | :--- |")
+        for idx, p in enumerate(paragraphs, 1):
+            p_idx = p.get("index", idx)
+            b_sc = _safe_float(p.get("before_scale"), 0.0)
+            a_sc = _safe_float(p.get("after_scale"), 0.0)
+            d_sc = _safe_float(p.get("delta_scale"), round(b_sc - a_sc, 2))
+            stage = p.get("stage_applied", "full")
+            if stage == "code" or p.get("is_code"):
+                p_status = "🔵 Code"
+            else:
+                p_status = "🟢 Human" if a_sc < 50.0 else "🔴 AI"
+
+            hum_p_text = str(p.get("humanized_text", "")).strip()
+            preview = (hum_p_text[:75] + "…") if len(hum_p_text) > 75 else hum_p_text
+            preview_clean = _escape_md_table_cell(preview)
+            lines.append(
+                f"| {p_idx} | {p_status} | {_format_percentage(b_sc)} | {_format_percentage(a_sc)} | -{_format_percentage(d_sc)} | `{stage}` | {preview_clean} |"
+            )
+        lines.append("")
+
+        # Detailed Comparison Blocks
+        lines.append("### Detailed Paragraph Comparisons")
+        lines.append("")
+        for idx, p in enumerate(paragraphs, 1):
+            p_idx = p.get("index", idx)
+            b_sc = _safe_float(p.get("before_scale"), 0.0)
+            a_sc = _safe_float(p.get("after_scale"), 0.0)
+            stage = p.get("stage_applied", "full")
+            is_c = (stage == "code" or bool(p.get("is_code")))
+            p_status = "🔵 Code (Preserved)" if is_c else ("🟢 Human-Verified" if a_sc < 50.0 else "🔴 AI-Biased")
+            orig_p_text = str(p.get("original_text", "")).strip()
+            hum_p_text = str(p.get("humanized_text", "")).strip()
+
+            if is_c:
+                lines.append(f"#### Paragraph #{p_idx} — {p_status} [Stage: `code`]")
+                lines.append("")
+                lines.append("```text")
+                lines.append(orig_p_text)
+                lines.append("```")
+                lines.append("")
+            else:
+                lines.append(f"#### Paragraph #{p_idx} — {p_status} ({_format_percentage(b_sc)} → {_format_percentage(a_sc)}) [Stage: `{stage}`]")
+                lines.append("")
+                lines.append("**Original Text:**")
+                lines.append("\n".join(f"> {line}" for line in orig_p_text.splitlines()) if orig_p_text else "> *(empty content)*")
+                lines.append("")
+                lines.append("**Humanized Text:**")
+                lines.append("\n".join(f"> {line}" for line in hum_p_text.splitlines()) if hum_p_text else "> *(empty content)*")
+                lines.append("")
+
+    # Full Transformed Text
+    if humanized_text and len(humanized_text.strip()) > 0:
+        lines.append("## 📜 Full Transformed Text")
+        lines.append("")
+        lines.append("<details>")
+        lines.append("<summary>Click to expand full humanized text</summary>")
+        lines.append("")
+        lines.append("```text")
+        lines.append(humanized_text.strip())
+        lines.append("```")
+        lines.append("</details>")
+        lines.append("")
+
+    # Footer
     lines.append("---")
-    lines.append("*Report automatically generated by VeriText Batch Processor.*")
+    lines.append("*Report automatically generated by VeriText AI Text Humanizer.*")
     lines.append("")
 
     return "\n".join(lines)
+

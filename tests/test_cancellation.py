@@ -118,23 +118,6 @@ class TestCancellation(unittest.TestCase):
             self.assertEqual(res.status_code, 499)
             self.assertIn("cancelled", res.json()["detail"].lower())
 
-    def test_api_score_file_returns_499_when_cancelled(self) -> None:
-        from unittest.mock import patch
-
-        def fake_score_batch(texts, mode="auto", batch_size=16, is_cancelled=None):
-            raise OperationCancelled("Analysis aborted by user.")
-
-        with patch("backend.api.routes.engine.score_batch", side_effect=fake_score_batch):
-            csv_content = b"text\nRow one text\nRow two text\n"
-            res = self.client.post(
-                "/api/score-file",
-                files={"file": ("dataset.csv", csv_content, "text/csv")},
-                data={"mode": "auto", "batch_size": 32},
-                headers={"X-Request-ID": "test-abort-batch"},
-            )
-            self.assertEqual(res.status_code, 499)
-            self.assertIn("cancelled", res.json()["detail"].lower())
-
 
 if __name__ == "__main__":
     unittest.main()
